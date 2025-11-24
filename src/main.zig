@@ -107,6 +107,14 @@ const SB_PAGEUP: u32 = 2;
 const SB_PAGEDOWN: u32 = 3;
 const SB_THUMBTRACK: u32 = 5;
 
+// combobox
+const CBS_DROPDOWNLIST: u32 = 0x0003;
+const CBS_HASSTRINGS: u32 = 0x0200;
+const CB_ADDSTRING: u32 = 0x0143;
+const CB_SETCURSEL: u32 = 0x014E;
+const CB_GETCURSEL: u32 = 0x0147;
+const CBN_SELCHANGE: u16 = 1;
+
 // button notifications
 const BN_CLICKED: u16 = 0;
 
@@ -170,7 +178,73 @@ const WavFile = struct {
     data: []const u8,
 };
 
-const wav_files = [_]WavFile{
+const SoundBank = struct {
+    name: [:0]const u8,
+    wavs: []const WavFile,
+};
+
+// button names (shared across all banks with same files)
+const button_names = [_][]const u8{
+    "amazing",
+    "boring",
+    "brilliant",
+    "bummer",
+    "bungee",
+    "byebye",
+    "collect",
+    "comeonthen",
+    "coward",
+    "dragonpunch",
+    "drop",
+    "excellent",
+    "fatality",
+    "fireball",
+    "fire",
+    "firstblood",
+    "flawless",
+    "goaway",
+    "grenade",
+    "hello",
+    "hmm",
+    "hurry",
+    "illgetyou",
+    "incoming",
+    "jump1",
+    "jump2",
+    "justyouwait",
+    "kamikaze",
+    "laugh",
+    "leavemealone",
+    "missed",
+    "nooo",
+    "ohdear",
+    "oinutter",
+    "ooff1",
+    "ooff2",
+    "ooff3",
+    "oops",
+    "orders",
+    "ouch",
+    "ow1",
+    "ow2",
+    "ow3",
+    "perfect",
+    "revenge",
+    "runaway",
+    "stupid",
+    "surf",
+    "takecover",
+    "traitor",
+    "uh-oh",
+    "victory",
+    "watchthis",
+    "whatthe",
+    "wobble",
+    "yessir",
+    "youllregretthat",
+};
+
+const american_wavs = [_]WavFile{
     .{ .name = "amazing", .data = @embedFile("wavs/Speech-Banks/American/AMAZING.WAV") },
     .{ .name = "boring", .data = @embedFile("wavs/Speech-Banks/American/BORING.WAV") },
     .{ .name = "brilliant", .data = @embedFile("wavs/Speech-Banks/American/BRILLIANT.WAV") },
@@ -230,6 +304,132 @@ const wav_files = [_]WavFile{
     .{ .name = "youllregretthat", .data = @embedFile("wavs/Speech-Banks/American/YOULLREGRETTHAT.WAV") },
 };
 
+const english_wavs = [_]WavFile{
+    .{ .name = "amazing", .data = @embedFile("wavs/Speech-Banks/English/AMAZING.WAV") },
+    .{ .name = "boring", .data = @embedFile("wavs/Speech-Banks/English/BORING.WAV") },
+    .{ .name = "brilliant", .data = @embedFile("wavs/Speech-Banks/English/BRILLIANT.WAV") },
+    .{ .name = "bummer", .data = @embedFile("wavs/Speech-Banks/English/BUMMER.WAV") },
+    .{ .name = "bungee", .data = @embedFile("wavs/Speech-Banks/English/BUNGEE.WAV") },
+    .{ .name = "byebye", .data = @embedFile("wavs/Speech-Banks/English/BYEBYE.WAV") },
+    .{ .name = "collect", .data = @embedFile("wavs/Speech-Banks/English/COLLECT.WAV") },
+    .{ .name = "comeonthen", .data = @embedFile("wavs/Speech-Banks/English/COMEONTHEN.WAV") },
+    .{ .name = "coward", .data = @embedFile("wavs/Speech-Banks/English/COWARD.WAV") },
+    .{ .name = "dragonpunch", .data = @embedFile("wavs/Speech-Banks/English/DRAGONPUNCH.WAV") },
+    .{ .name = "drop", .data = @embedFile("wavs/Speech-Banks/English/DROP.WAV") },
+    .{ .name = "excellent", .data = @embedFile("wavs/Speech-Banks/English/EXCELLENT.WAV") },
+    .{ .name = "fatality", .data = @embedFile("wavs/Speech-Banks/English/FATALITY.WAV") },
+    .{ .name = "fireball", .data = @embedFile("wavs/Speech-Banks/English/FIREBALL.WAV") },
+    .{ .name = "fire", .data = @embedFile("wavs/Speech-Banks/English/FIRE.WAV") },
+    .{ .name = "firstblood", .data = @embedFile("wavs/Speech-Banks/English/FIRSTBLOOD.WAV") },
+    .{ .name = "flawless", .data = @embedFile("wavs/Speech-Banks/English/FLAWLESS.WAV") },
+    .{ .name = "goaway", .data = @embedFile("wavs/Speech-Banks/English/GOAWAY.WAV") },
+    .{ .name = "grenade", .data = @embedFile("wavs/Speech-Banks/English/GRENADE.WAV") },
+    .{ .name = "hello", .data = @embedFile("wavs/Speech-Banks/English/HELLO.WAV") },
+    .{ .name = "hmm", .data = @embedFile("wavs/Speech-Banks/English/HMM.WAV") },
+    .{ .name = "hurry", .data = @embedFile("wavs/Speech-Banks/English/HURRY.WAV") },
+    .{ .name = "illgetyou", .data = @embedFile("wavs/Speech-Banks/English/ILLGETYOU.WAV") },
+    .{ .name = "incoming", .data = @embedFile("wavs/Speech-Banks/English/INCOMING.WAV") },
+    .{ .name = "jump1", .data = @embedFile("wavs/Speech-Banks/English/JUMP1.WAV") },
+    .{ .name = "jump2", .data = @embedFile("wavs/Speech-Banks/English/JUMP2.WAV") },
+    .{ .name = "justyouwait", .data = @embedFile("wavs/Speech-Banks/English/JUSTYOUWAIT.WAV") },
+    .{ .name = "kamikaze", .data = @embedFile("wavs/Speech-Banks/English/KAMIKAZE.WAV") },
+    .{ .name = "laugh", .data = @embedFile("wavs/Speech-Banks/English/LAUGH.WAV") },
+    .{ .name = "leavemealone", .data = @embedFile("wavs/Speech-Banks/English/LEAVEMEALONE.WAV") },
+    .{ .name = "missed", .data = @embedFile("wavs/Speech-Banks/English/MISSED.WAV") },
+    .{ .name = "nooo", .data = @embedFile("wavs/Speech-Banks/English/NOOO.WAV") },
+    .{ .name = "ohdear", .data = @embedFile("wavs/Speech-Banks/English/OHDEAR.WAV") },
+    .{ .name = "oinutter", .data = @embedFile("wavs/Speech-Banks/English/OINUTTER.WAV") },
+    .{ .name = "ooff1", .data = @embedFile("wavs/Speech-Banks/English/OOFF1.WAV") },
+    .{ .name = "ooff2", .data = @embedFile("wavs/Speech-Banks/English/OOFF2.WAV") },
+    .{ .name = "ooff3", .data = @embedFile("wavs/Speech-Banks/English/OOFF3.WAV") },
+    .{ .name = "oops", .data = @embedFile("wavs/Speech-Banks/English/OOPS.WAV") },
+    .{ .name = "orders", .data = @embedFile("wavs/Speech-Banks/English/ORDERS.WAV") },
+    .{ .name = "ouch", .data = @embedFile("wavs/Speech-Banks/English/OUCH.WAV") },
+    .{ .name = "ow1", .data = @embedFile("wavs/Speech-Banks/English/OW1.WAV") },
+    .{ .name = "ow2", .data = @embedFile("wavs/Speech-Banks/English/OW2.WAV") },
+    .{ .name = "ow3", .data = @embedFile("wavs/Speech-Banks/English/OW3.WAV") },
+    .{ .name = "perfect", .data = @embedFile("wavs/Speech-Banks/English/PERFECT.WAV") },
+    .{ .name = "revenge", .data = @embedFile("wavs/Speech-Banks/English/REVENGE.WAV") },
+    .{ .name = "runaway", .data = @embedFile("wavs/Speech-Banks/English/RUNAWAY.WAV") },
+    .{ .name = "stupid", .data = @embedFile("wavs/Speech-Banks/English/STUPID.WAV") },
+    .{ .name = "surf", .data = @embedFile("wavs/Speech-Banks/English/SURF.WAV") },
+    .{ .name = "takecover", .data = @embedFile("wavs/Speech-Banks/English/TAKECOVER.WAV") },
+    .{ .name = "traitor", .data = @embedFile("wavs/Speech-Banks/English/TRAITOR.WAV") },
+    .{ .name = "uh-oh", .data = @embedFile("wavs/Speech-Banks/English/UH-OH.WAV") },
+    .{ .name = "victory", .data = @embedFile("wavs/Speech-Banks/English/VICTORY.WAV") },
+    .{ .name = "watchthis", .data = @embedFile("wavs/Speech-Banks/English/WATCHTHIS.WAV") },
+    .{ .name = "whatthe", .data = @embedFile("wavs/Speech-Banks/English/WHATTHE.WAV") },
+    .{ .name = "wobble", .data = @embedFile("wavs/Speech-Banks/English/WOBBLE.WAV") },
+    .{ .name = "yessir", .data = @embedFile("wavs/Speech-Banks/English/YESSIR.WAV") },
+    .{ .name = "youllregretthat", .data = @embedFile("wavs/Speech-Banks/English/YOULLREGRETTHAT.WAV") },
+};
+
+const australian_wavs = [_]WavFile{
+    .{ .name = "amazing", .data = @embedFile("wavs/Speech-Banks/Australian/AMAZING.WAV") },
+    .{ .name = "boring", .data = @embedFile("wavs/Speech-Banks/Australian/BORING.WAV") },
+    .{ .name = "brilliant", .data = @embedFile("wavs/Speech-Banks/Australian/BRILLIANT.WAV") },
+    .{ .name = "bummer", .data = @embedFile("wavs/Speech-Banks/Australian/BUMMER.WAV") },
+    .{ .name = "bungee", .data = @embedFile("wavs/Speech-Banks/Australian/BUNGEE.WAV") },
+    .{ .name = "byebye", .data = @embedFile("wavs/Speech-Banks/Australian/BYEBYE.WAV") },
+    .{ .name = "collect", .data = @embedFile("wavs/Speech-Banks/Australian/COLLECT.WAV") },
+    .{ .name = "comeonthen", .data = @embedFile("wavs/Speech-Banks/Australian/COMEONTHEN.WAV") },
+    .{ .name = "coward", .data = @embedFile("wavs/Speech-Banks/Australian/COWARD.WAV") },
+    .{ .name = "dragonpunch", .data = @embedFile("wavs/Speech-Banks/Australian/DRAGONPUNCH.WAV") },
+    .{ .name = "drop", .data = @embedFile("wavs/Speech-Banks/Australian/DROP.WAV") },
+    .{ .name = "excellent", .data = @embedFile("wavs/Speech-Banks/Australian/EXCELLENT.WAV") },
+    .{ .name = "fatality", .data = @embedFile("wavs/Speech-Banks/Australian/FATALITY.WAV") },
+    .{ .name = "fireball", .data = @embedFile("wavs/Speech-Banks/Australian/FIREBALL.WAV") },
+    .{ .name = "fire", .data = @embedFile("wavs/Speech-Banks/Australian/FIRE.WAV") },
+    .{ .name = "firstblood", .data = @embedFile("wavs/Speech-Banks/Australian/FIRSTBLOOD.WAV") },
+    .{ .name = "flawless", .data = @embedFile("wavs/Speech-Banks/Australian/FLAWLESS.WAV") },
+    .{ .name = "goaway", .data = @embedFile("wavs/Speech-Banks/Australian/GOAWAY.WAV") },
+    .{ .name = "grenade", .data = @embedFile("wavs/Speech-Banks/Australian/GRENADE.WAV") },
+    .{ .name = "hello", .data = @embedFile("wavs/Speech-Banks/Australian/HELLO.WAV") },
+    .{ .name = "hmm", .data = @embedFile("wavs/Speech-Banks/Australian/HMM.WAV") },
+    .{ .name = "hurry", .data = @embedFile("wavs/Speech-Banks/Australian/HURRY.WAV") },
+    .{ .name = "illgetyou", .data = @embedFile("wavs/Speech-Banks/Australian/ILLGETYOU.WAV") },
+    .{ .name = "incoming", .data = @embedFile("wavs/Speech-Banks/Australian/INCOMING.WAV") },
+    .{ .name = "jump1", .data = @embedFile("wavs/Speech-Banks/Australian/JUMP1.WAV") },
+    .{ .name = "jump2", .data = @embedFile("wavs/Speech-Banks/Australian/JUMP2.WAV") },
+    .{ .name = "justyouwait", .data = @embedFile("wavs/Speech-Banks/Australian/JUSTYOUWAIT.WAV") },
+    .{ .name = "kamikaze", .data = @embedFile("wavs/Speech-Banks/Australian/KAMIKAZE.WAV") },
+    .{ .name = "laugh", .data = @embedFile("wavs/Speech-Banks/Australian/LAUGH.WAV") },
+    .{ .name = "leavemealone", .data = @embedFile("wavs/Speech-Banks/Australian/LEAVEMEALONE.WAV") },
+    .{ .name = "missed", .data = @embedFile("wavs/Speech-Banks/Australian/MISSED.WAV") },
+    .{ .name = "nooo", .data = @embedFile("wavs/Speech-Banks/Australian/NOOO.WAV") },
+    .{ .name = "ohdear", .data = @embedFile("wavs/Speech-Banks/Australian/OHDEAR.WAV") },
+    .{ .name = "oinutter", .data = @embedFile("wavs/Speech-Banks/Australian/OINUTTER.WAV") },
+    .{ .name = "ooff1", .data = @embedFile("wavs/Speech-Banks/Australian/OOFF1.WAV") },
+    .{ .name = "ooff2", .data = @embedFile("wavs/Speech-Banks/Australian/OOFF2.WAV") },
+    .{ .name = "ooff3", .data = @embedFile("wavs/Speech-Banks/Australian/OOFF3.WAV") },
+    .{ .name = "oops", .data = @embedFile("wavs/Speech-Banks/Australian/OOPS.WAV") },
+    .{ .name = "orders", .data = @embedFile("wavs/Speech-Banks/Australian/ORDERS.WAV") },
+    .{ .name = "ouch", .data = @embedFile("wavs/Speech-Banks/Australian/OUCH.WAV") },
+    .{ .name = "ow1", .data = @embedFile("wavs/Speech-Banks/Australian/OW1.WAV") },
+    .{ .name = "ow2", .data = @embedFile("wavs/Speech-Banks/Australian/OW2.WAV") },
+    .{ .name = "ow3", .data = @embedFile("wavs/Speech-Banks/Australian/OW3.WAV") },
+    .{ .name = "perfect", .data = @embedFile("wavs/Speech-Banks/Australian/PERFECT.WAV") },
+    .{ .name = "revenge", .data = @embedFile("wavs/Speech-Banks/Australian/REVENGE.WAV") },
+    .{ .name = "runaway", .data = @embedFile("wavs/Speech-Banks/Australian/RUNAWAY.WAV") },
+    .{ .name = "stupid", .data = @embedFile("wavs/Speech-Banks/Australian/STUPID.WAV") },
+    .{ .name = "surf", .data = @embedFile("wavs/Speech-Banks/Australian/SURF.WAV") },
+    .{ .name = "takecover", .data = @embedFile("wavs/Speech-Banks/Australian/TAKECOVER.WAV") },
+    .{ .name = "traitor", .data = @embedFile("wavs/Speech-Banks/Australian/TRAITOR.WAV") },
+    .{ .name = "uh-oh", .data = @embedFile("wavs/Speech-Banks/Australian/UH-OH.WAV") },
+    .{ .name = "victory", .data = @embedFile("wavs/Speech-Banks/Australian/VICTORY.WAV") },
+    .{ .name = "watchthis", .data = @embedFile("wavs/Speech-Banks/Australian/WATCHTHIS.WAV") },
+    .{ .name = "whatthe", .data = @embedFile("wavs/Speech-Banks/Australian/WHATTHE.WAV") },
+    .{ .name = "wobble", .data = @embedFile("wavs/Speech-Banks/Australian/WOBBLE.WAV") },
+    .{ .name = "yessir", .data = @embedFile("wavs/Speech-Banks/Australian/YESSIR.WAV") },
+    .{ .name = "youllregretthat", .data = @embedFile("wavs/Speech-Banks/Australian/YOULLREGRETTHAT.WAV") },
+};
+
+const sound_banks = [_]SoundBank{
+    .{ .name = "American", .wavs = &american_wavs },
+    .{ .name = "English", .wavs = &english_wavs },
+    .{ .name = "Australian", .wavs = &australian_wavs },
+};
+
 // layout constants
 const BUTTON_HEIGHT: i32 = 25;
 const BUTTON_PADDING: i32 = 4;
@@ -237,9 +437,18 @@ const BUTTON_CHAR_WIDTH: i32 = 8; // approximate char width for button sizing
 const MIN_BUTTON_WIDTH: i32 = 60;
 const MIN_WINDOW_WIDTH: i32 = 400;
 const MIN_WINDOW_HEIGHT: i32 = 300;
+const TOOLBAR_HEIGHT: i32 = 30; // space for dropdown at top
+const COMBOBOX_WIDTH: i32 = 150;
+const COMBOBOX_HEIGHT: i32 = 200; // dropdown list height
+
+// control IDs - buttons use 0..N-1, combobox uses a high ID
+const ID_COMBOBOX: usize = 1000;
 
 // globals for window state
-var g_buttons: [wav_files.len]?HWND = [_]?HWND{null} ** wav_files.len;
+const NUM_BUTTONS = button_names.len;
+var g_buttons: [NUM_BUTTONS]?HWND = [_]?HWND{null} ** NUM_BUTTONS;
+var g_combobox: ?HWND = null;
+var g_current_bank: usize = 0;
 var g_scroll_pos: i32 = 0;
 var g_content_height: i32 = 0;
 var g_main_hwnd: ?HWND = null;
@@ -250,11 +459,12 @@ fn wndProc(hwnd: HWND, msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(.c) LR
     switch (msg) {
         WM_CREATE => {
             g_main_hwnd = hwnd;
+            createCombobox(hwnd);
             createButtons(hwnd);
             return 0;
         },
         WM_SIZE => {
-            layoutButtons(hwnd);
+            layoutControls(hwnd);
             return 0;
         },
         WM_GETMINMAXINFO => {
@@ -266,7 +476,9 @@ fn wndProc(hwnd: HWND, msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(.c) LR
         WM_COMMAND => {
             const notification = @as(u16, @truncate(wParam >> 16));
             const control_id = @as(u16, @truncate(wParam));
-            if (notification == BN_CLICKED and control_id < wav_files.len) {
+            if (control_id == ID_COMBOBOX and notification == CBN_SELCHANGE) {
+                handleBankChange(hwnd);
+            } else if (notification == BN_CLICKED and control_id < NUM_BUTTONS) {
                 playSound(control_id);
             }
             return 0;
@@ -290,13 +502,40 @@ fn wndProc(hwnd: HWND, msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(.c) LR
     }
 }
 
+fn createCombobox(hwnd: HWND) void {
+    const hinstance = GetModuleHandleA(null);
+    g_combobox = CreateWindowExA(
+        0,
+        "COMBOBOX",
+        null,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+        BUTTON_PADDING,
+        BUTTON_PADDING,
+        COMBOBOX_WIDTH,
+        COMBOBOX_HEIGHT,
+        hwnd,
+        @ptrFromInt(ID_COMBOBOX),
+        hinstance,
+        null,
+    );
+
+    // add bank names to combobox
+    if (g_combobox) |combo| {
+        for (sound_banks) |bank| {
+            _ = SendMessageA(combo, CB_ADDSTRING, 0, @intFromPtr(bank.name.ptr));
+        }
+        // select first bank
+        _ = SendMessageA(combo, CB_SETCURSEL, 0, 0);
+    }
+}
+
 fn createButtons(hwnd: HWND) void {
     const hinstance = GetModuleHandleA(null);
-    for (wav_files, 0..) |wav, i| {
+    for (button_names, 0..) |name, i| {
         // create null-terminated name
         var name_buf: [64:0]u8 = undefined;
-        const name_len = @min(wav.name.len, 63);
-        @memcpy(name_buf[0..name_len], wav.name[0..name_len]);
+        const name_len = @min(name.len, 63);
+        @memcpy(name_buf[0..name_len], name[0..name_len]);
         name_buf[name_len] = 0;
 
         g_buttons[i] = CreateWindowExA(
@@ -316,25 +555,26 @@ fn createButtons(hwnd: HWND) void {
     }
 }
 
-fn layoutButtons(hwnd: HWND) void {
+fn layoutControls(hwnd: HWND) void {
     var rect: RECT = undefined;
     _ = GetClientRect(hwnd, &rect);
     const client_width = rect.right - rect.left;
     const client_height = rect.bottom - rect.top;
+    const button_area_height = client_height - TOOLBAR_HEIGHT;
 
     // calculate button widths based on text length
-    var button_widths: [wav_files.len]i32 = undefined;
-    for (wav_files, 0..) |wav, i| {
-        const text_width = @as(i32, @intCast(wav.name.len)) * BUTTON_CHAR_WIDTH + 16; // padding
+    var button_widths: [NUM_BUTTONS]i32 = undefined;
+    for (button_names, 0..) |name, i| {
+        const text_width = @as(i32, @intCast(name.len)) * BUTTON_CHAR_WIDTH + 16; // padding
         button_widths[i] = @max(text_width, MIN_BUTTON_WIDTH);
     }
 
-    // layout buttons in rows
+    // layout buttons in rows, starting below toolbar
     var x: i32 = BUTTON_PADDING;
-    var y: i32 = BUTTON_PADDING - g_scroll_pos;
+    var y: i32 = TOOLBAR_HEIGHT + BUTTON_PADDING - g_scroll_pos;
     const row_height: i32 = BUTTON_HEIGHT + BUTTON_PADDING;
 
-    for (0..wav_files.len) |i| {
+    for (0..NUM_BUTTONS) |i| {
         const btn_width = button_widths[i];
 
         // wrap to next row if needed
@@ -350,15 +590,15 @@ fn layoutButtons(hwnd: HWND) void {
         x += btn_width + BUTTON_PADDING;
     }
 
-    // calculate total content height
-    g_content_height = y + row_height + g_scroll_pos;
+    // calculate total content height (relative to button area)
+    g_content_height = (y - TOOLBAR_HEIGHT) + row_height + g_scroll_pos;
 
-    // update scrollbar
+    // update scrollbar based on button area height
     var si = SCROLLINFO{
         .fMask = SIF_ALL,
         .nMin = 0,
         .nMax = g_content_height,
-        .nPage = @intCast(client_height),
+        .nPage = @intCast(button_area_height),
         .nPos = g_scroll_pos,
     };
     _ = SetScrollInfo(hwnd, SB_VERT, &si, 1);
@@ -388,7 +628,7 @@ fn handleScroll(hwnd: HWND, wParam: WPARAM) void {
         const delta = g_scroll_pos - new_pos;
         g_scroll_pos = new_pos;
         _ = ScrollWindow(hwnd, 0, delta, null, null);
-        layoutButtons(hwnd);
+        layoutControls(hwnd);
     }
 }
 
@@ -404,15 +644,28 @@ fn scrollContent(hwnd: HWND, delta: i32) void {
         const scroll_delta = g_scroll_pos - new_pos;
         g_scroll_pos = new_pos;
         _ = ScrollWindow(hwnd, 0, scroll_delta, null, null);
-        layoutButtons(hwnd);
+        layoutControls(hwnd);
     }
 }
 
 fn playSound(index: u16) void {
-    if (index < wav_files.len) {
-        const wav = wav_files[index];
+    const bank = sound_banks[g_current_bank];
+    if (index < bank.wavs.len) {
+        const wav = bank.wavs[index];
         // stop any playing sound and play this one
         _ = PlaySoundA(wav.data.ptr, null, SND_MEMORY | SND_ASYNC);
+    }
+}
+
+fn handleBankChange(hwnd: HWND) void {
+    if (g_combobox) |combo| {
+        const sel = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+        if (sel >= 0 and @as(usize, @intCast(sel)) < sound_banks.len) {
+            g_current_bank = @intCast(sel);
+            // reset scroll position when changing banks
+            g_scroll_pos = 0;
+            layoutControls(hwnd);
+        }
     }
 }
 
