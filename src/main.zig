@@ -352,7 +352,6 @@ const english_wavs = [_]WavFile{
     .{ .name = "revenge", .data = @embedFile("wavs/Speech-Banks/English/REVENGE.WAV") },
     .{ .name = "runaway", .data = @embedFile("wavs/Speech-Banks/English/RUNAWAY.WAV") },
     .{ .name = "stupid", .data = @embedFile("wavs/Speech-Banks/English/STUPID.WAV") },
-    .{ .name = "surf", .data = @embedFile("wavs/Speech-Banks/English/SURF.WAV") },
     .{ .name = "takecover", .data = @embedFile("wavs/Speech-Banks/English/TAKECOVER.WAV") },
     .{ .name = "traitor", .data = @embedFile("wavs/Speech-Banks/English/TRAITOR.WAV") },
     .{ .name = "uh-oh", .data = @embedFile("wavs/Speech-Banks/English/UH-OH.WAV") },
@@ -385,7 +384,6 @@ const australian_wavs = [_]WavFile{
     .{ .name = "goaway", .data = @embedFile("wavs/Speech-Banks/Australian/GOAWAY.WAV") },
     .{ .name = "grenade", .data = @embedFile("wavs/Speech-Banks/Australian/GRENADE.WAV") },
     .{ .name = "hello", .data = @embedFile("wavs/Speech-Banks/Australian/HELLO.WAV") },
-    .{ .name = "hmm", .data = @embedFile("wavs/Speech-Banks/Australian/HMM.WAV") },
     .{ .name = "hurry", .data = @embedFile("wavs/Speech-Banks/Australian/HURRY.WAV") },
     .{ .name = "illgetyou", .data = @embedFile("wavs/Speech-Banks/Australian/ILLGETYOU.WAV") },
     .{ .name = "incoming", .data = @embedFile("wavs/Speech-Banks/Australian/INCOMING.WAV") },
@@ -412,14 +410,12 @@ const australian_wavs = [_]WavFile{
     .{ .name = "revenge", .data = @embedFile("wavs/Speech-Banks/Australian/REVENGE.WAV") },
     .{ .name = "runaway", .data = @embedFile("wavs/Speech-Banks/Australian/RUNAWAY.WAV") },
     .{ .name = "stupid", .data = @embedFile("wavs/Speech-Banks/Australian/STUPID.WAV") },
-    .{ .name = "surf", .data = @embedFile("wavs/Speech-Banks/Australian/SURF.WAV") },
     .{ .name = "takecover", .data = @embedFile("wavs/Speech-Banks/Australian/TAKECOVER.WAV") },
     .{ .name = "traitor", .data = @embedFile("wavs/Speech-Banks/Australian/TRAITOR.WAV") },
     .{ .name = "uh-oh", .data = @embedFile("wavs/Speech-Banks/Australian/UH-OH.WAV") },
     .{ .name = "victory", .data = @embedFile("wavs/Speech-Banks/Australian/VICTORY.WAV") },
     .{ .name = "watchthis", .data = @embedFile("wavs/Speech-Banks/Australian/WATCHTHIS.WAV") },
     .{ .name = "whatthe", .data = @embedFile("wavs/Speech-Banks/Australian/WHATTHE.WAV") },
-    .{ .name = "wobble", .data = @embedFile("wavs/Speech-Banks/Australian/WOBBLE.WAV") },
     .{ .name = "yessir", .data = @embedFile("wavs/Speech-Banks/Australian/YESSIR.WAV") },
     .{ .name = "youllregretthat", .data = @embedFile("wavs/Speech-Banks/Australian/YOULLREGRETTHAT.WAV") },
 };
@@ -507,7 +503,7 @@ fn createCombobox(hwnd: HWND) void {
     g_combobox = CreateWindowExA(
         0,
         "COMBOBOX",
-        null,
+        "",
         WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
         BUTTON_PADDING,
         BUTTON_PADDING,
@@ -522,7 +518,7 @@ fn createCombobox(hwnd: HWND) void {
     // add bank names to combobox
     if (g_combobox) |combo| {
         for (sound_banks) |bank| {
-            _ = SendMessageA(combo, CB_ADDSTRING, 0, @intFromPtr(bank.name.ptr));
+            _ = SendMessageA(combo, CB_ADDSTRING, 0, @bitCast(@intFromPtr(bank.name.ptr)));
         }
         // select first bank
         _ = SendMessageA(combo, CB_SETCURSEL, 0, 0);
