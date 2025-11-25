@@ -1,8 +1,3 @@
-set shell := ["cmd", "/c"]
-
-# wormboard build and run commands
-
-# build runtime mode (tiny binary, reads from worms installation)
 build:
     zig build
 
@@ -21,6 +16,9 @@ release-embed:
 # run the executable
 run: build
     zig-out\bin\wormboard.exe
+
+run-wine: build
+    wine zig-out\bin\wormboard.exe
 
 # run embedded version
 run-embed: build-embed

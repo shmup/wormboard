@@ -633,9 +633,12 @@ pub fn main() void {
 
     const hinstance = win32.GetModuleHandleA(null);
 
+    const icon = win32.LoadIconA(hinstance, win32.IDI_APP);
     const wc = win32.WNDCLASSEXA{
         .lpfnWndProc = wndProc,
         .hInstance = hinstance,
+        .hIcon = icon,
+        .hIconSm = icon,
         .hCursor = win32.LoadCursorA(null, win32.IDC_ARROW),
         .hbrBackground = @ptrFromInt(win32.COLOR_BTNFACE + 1),
         .lpszClassName = "WormboardClass",

@@ -233,6 +233,10 @@ pub extern "user32" fn ChildWindowFromPoint(HWND, POINT) callconv(.c) ?HWND;
 pub extern "user32" fn GetDlgCtrlID(HWND) callconv(.c) i32;
 pub extern "user32" fn SetCapture(HWND) callconv(.c) ?HWND;
 pub extern "user32" fn ReleaseCapture() callconv(.c) BOOL;
+pub extern "user32" fn LoadIconA(?HINSTANCE, usize) callconv(.c) ?HICON;
+
+// icon resource id
+pub const IDI_APP: usize = 1;
 
 // registry types and constants
 pub const HKEY = *opaque {};

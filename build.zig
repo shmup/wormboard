@@ -38,6 +38,9 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("shell32");
     exe.linkSystemLibrary("ole32");
 
+    // add windows resources (icon)
+    exe.addWin32ResourceFile(.{ .file = b.path("src/resources.rc") });
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
