@@ -159,6 +159,7 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         },
         win32.WM_SIZE => {
             layoutControls(hwnd);
+            _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
             return 0;
         },
         win32.WM_GETMINMAXINFO => {
