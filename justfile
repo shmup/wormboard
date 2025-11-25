@@ -1,3 +1,5 @@
+set shell := ["cmd", "/c"]
+
 # wormboard build and run commands
 
 # build the windows executable
@@ -8,6 +10,6 @@ build:
 release:
     zig build -Doptimize=ReleaseSafe
 
-# run with wine (via flatpak)
-wine: build
-    wine zig-out/bin/wormboard.exe
+# run the executable
+run: build
+    zig-out\bin\wormboard.exe

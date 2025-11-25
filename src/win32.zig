@@ -136,9 +136,11 @@ pub const CB_ADDSTRING: u32 = 0x0143;
 pub const CB_SETCURSEL: u32 = 0x014E;
 pub const CB_GETCURSEL: u32 = 0x0147;
 pub const CBN_SELCHANGE: u16 = 1;
+pub const CBN_CLOSEUP: u16 = 8;
 
 // button notifications
 pub const BN_CLICKED: u16 = 0;
+pub const BM_SETSTATE: u32 = 0x00F3;
 
 // menu flags
 pub const MF_STRING: u32 = 0x00000000;
@@ -147,6 +149,24 @@ pub const MF_POPUP: u32 = 0x00000010;
 // messagebox
 pub const MB_OK: u32 = 0x00000000;
 pub const MB_ICONINFORMATION: u32 = 0x00000040;
+
+// keyboard
+pub const WM_KEYDOWN: u32 = 0x0100;
+pub const WM_KEYUP: u32 = 0x0101;
+pub const WM_KILLFOCUS: u32 = 0x0008;
+
+// mouse
+pub const WM_LBUTTONUP: u32 = 0x0202;
+
+// ui state (hide focus rectangles)
+pub const WM_UPDATEUISTATE: u32 = 0x0128;
+pub const UIS_SET: u32 = 1;
+pub const UISF_HIDEFOCUS: u32 = 0x1;
+
+// timer
+pub const WM_TIMER: u32 = 0x0113;
+pub const VK_UP: u32 = 0x26;
+pub const VK_DOWN: u32 = 0x28;
 
 // sound flags
 pub const SND_MEMORY: u32 = 0x0004;
@@ -202,3 +222,12 @@ pub extern "user32" fn CreatePopupMenu() callconv(.c) ?HMENU;
 pub extern "user32" fn AppendMenuA(HMENU, u32, usize, ?[*:0]const u8) callconv(.c) BOOL;
 pub extern "user32" fn SetMenu(HWND, ?HMENU) callconv(.c) BOOL;
 pub extern "user32" fn MessageBoxA(?HWND, [*:0]const u8, [*:0]const u8, u32) callconv(.c) i32;
+pub extern "user32" fn SetFocus(?HWND) callconv(.c) ?HWND;
+pub extern "user32" fn SetTimer(?HWND, usize, u32, ?*anyopaque) callconv(.c) usize;
+pub extern "user32" fn KillTimer(?HWND, usize) callconv(.c) BOOL;
+pub extern "user32" fn GetCursorPos(*POINT) callconv(.c) BOOL;
+pub extern "user32" fn ScreenToClient(HWND, *POINT) callconv(.c) BOOL;
+pub extern "user32" fn ChildWindowFromPoint(HWND, POINT) callconv(.c) ?HWND;
+pub extern "user32" fn GetDlgCtrlID(HWND) callconv(.c) i32;
+pub extern "user32" fn SetCapture(HWND) callconv(.c) ?HWND;
+pub extern "user32" fn ReleaseCapture() callconv(.c) BOOL;

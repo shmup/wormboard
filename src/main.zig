@@ -21,6 +21,37 @@ const ID_COMBOBOX: usize = 1000;
 const IDM_ABOUT: usize = 2001;
 const IDM_EXIT: usize = 2002;
 
+// keyboard mapping: 1-9, 0, then QWERTY order
+// virtual key codes: '0'-'9' = 0x30-0x39, 'A'-'Z' = 0x41-0x5A
+const QWERTY_KEYS = "QWERTYUIOPASDFGHJKLZXCVBNM";
+
+fn keyToSoundIndex(vk: u32) ?u16 {
+    // number keys: 1-9 -> 0-8, 0 -> 9
+    if (vk >= '1' and vk <= '9') return @intCast(vk - '1');
+    if (vk == '0') return 9;
+
+    // letter keys: QWERTY order -> 10+
+    for (QWERTY_KEYS, 0..) |key, i| {
+        if (vk == key) return @intCast(10 + i);
+    }
+    return null;
+}
+
+fn changeBankByDelta(hwnd: win32.HWND, delta: i32) void {
+    const num_banks: i32 = @intCast(sound_banks.sound_banks.len);
+    if (num_banks == 0) return;
+
+    var new_bank: i32 = @as(i32, @intCast(g_current_bank)) + delta;
+    // wrap around
+    if (new_bank < 0) new_bank = num_banks - 1;
+    if (new_bank >= num_banks) new_bank = 0;
+
+    if (g_combobox) |combo| {
+        _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, @intCast(new_bank), 0);
+    }
+    handleBankChange(hwnd);
+}
+
 // globals for window state
 var g_buttons: [MAX_BUTTONS]?win32.HWND = [_]?win32.HWND{null} ** MAX_BUTTONS;
 var g_num_buttons: usize = 0;
@@ -29,6 +60,8 @@ var g_current_bank: usize = 0;
 var g_scroll_pos: i32 = 0;
 var g_content_height: i32 = 0;
 var g_main_hwnd: ?win32.HWND = null;
+var g_held_key: ?u32 = null; // tracks key held down to ignore repeats
+var g_pending_button: ?u16 = null; // tracks button pressed while dropdown was closing
 
 fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -37,6 +70,8 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             createMenuBar(hwnd);
             createCombobox(hwnd);
             createButtonsForBank(hwnd, 0);
+            // hide focus rectangles on buttons
+            _ = win32.SendMessageA(hwnd, win32.WM_UPDATEUISTATE, (win32.UISF_HIDEFOCUS << 16) | win32.UIS_SET, 0);
             return 0;
         },
         win32.WM_SIZE => {
@@ -64,6 +99,25 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             }
             if (control_id == ID_COMBOBOX and notification == win32.CBN_SELCHANGE) {
                 handleBankChange(hwnd);
+            } else if (control_id == ID_COMBOBOX and notification == win32.CBN_CLOSEUP) {
+                // check if mouse is over a button - show it pressed, wait for release
+                var pt: win32.POINT = undefined;
+                if (win32.GetCursorPos(&pt) != 0) {
+                    _ = win32.ScreenToClient(hwnd, &pt);
+                    if (win32.ChildWindowFromPoint(hwnd, pt)) |child| {
+                        const child_id = win32.GetDlgCtrlID(child);
+                        if (child_id >= 0 and child_id < MAX_BUTTONS) {
+                            const btn_index: u16 = @intCast(child_id);
+                            if (g_buttons[btn_index]) |btn| {
+                                _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 1, 0);
+                                g_pending_button = btn_index;
+                                _ = win32.SetCapture(hwnd);
+                            }
+                        }
+                    }
+                }
+                // return focus to main window after dropdown closes
+                _ = win32.SetFocus(hwnd);
             } else if (notification == win32.BN_CLICKED and control_id < MAX_BUTTONS) {
                 playSound(control_id);
             }
@@ -79,6 +133,87 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             const scroll_amount: i32 = if (delta > 0) -30 else 30;
             scrollContent(hwnd, scroll_amount);
             return 0;
+        },
+        win32.WM_LBUTTONUP => {
+            // handle pending button from dropdown close
+            if (g_pending_button) |btn_index| {
+                _ = win32.ReleaseCapture();
+                // release button visual state
+                if (g_buttons[btn_index]) |btn| {
+                    _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
+                }
+                // check if mouse is still over the same button
+                var pt: win32.POINT = undefined;
+                if (win32.GetCursorPos(&pt) != 0) {
+                    _ = win32.ScreenToClient(hwnd, &pt);
+                    if (win32.ChildWindowFromPoint(hwnd, pt)) |child| {
+                        const child_id = win32.GetDlgCtrlID(child);
+                        if (child_id >= 0 and @as(u16, @intCast(child_id)) == btn_index) {
+                            playSound(btn_index);
+                        }
+                    }
+                }
+                g_pending_button = null;
+                return 0;
+            }
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+        },
+        win32.WM_KILLFOCUS => {
+            // release any held button when window loses focus
+            if (g_held_key) |vk| {
+                if (keyToSoundIndex(vk)) |index| {
+                    if (g_buttons[index]) |btn| {
+                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
+                    }
+                }
+                g_held_key = null;
+            }
+            // also release pending button from dropdown
+            if (g_pending_button) |btn_index| {
+                _ = win32.ReleaseCapture();
+                if (g_buttons[btn_index]) |btn| {
+                    _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
+                }
+                g_pending_button = null;
+            }
+            return 0;
+        },
+        win32.WM_KEYDOWN => {
+            const vk: u32 = @truncate(wParam);
+            // up/down arrows navigate banks
+            if (vk == win32.VK_UP) {
+                changeBankByDelta(hwnd, -1);
+                return 0;
+            } else if (vk == win32.VK_DOWN) {
+                changeBankByDelta(hwnd, 1);
+                return 0;
+            }
+            // alphanumeric keys - show button pressed (ignore key repeat)
+            if (g_held_key == null) {
+                if (keyToSoundIndex(vk)) |index| {
+                    g_held_key = vk;
+                    if (g_buttons[index]) |btn| {
+                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 1, 0);
+                    }
+                    return 0;
+                }
+            }
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+        },
+        win32.WM_KEYUP => {
+            const vk: u32 = @truncate(wParam);
+            // release button and play sound
+            if (g_held_key == vk) {
+                if (keyToSoundIndex(vk)) |index| {
+                    if (g_buttons[index]) |btn| {
+                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
+                    }
+                    playSound(index);
+                }
+                g_held_key = null;
+                return 0;
+            }
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_DESTROY => {
             win32.PostQuitMessage(0);
@@ -255,6 +390,8 @@ fn playSound(index: u16) void {
     if (index < bank.wavs.len) {
         const wav = bank.wavs[index];
         _ = win32.PlaySoundA(wav.data.ptr, null, win32.SND_MEMORY | win32.SND_ASYNC);
+        // return focus to main window so keyboard shortcuts work
+        _ = win32.SetFocus(g_main_hwnd);
     }
 }
 
