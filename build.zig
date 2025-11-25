@@ -28,7 +28,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         }),
+        .win32_manifest = null,
     });
+
+    // build as GUI app (no console window)
+    exe.subsystem = .Windows;
 
     // link windows libs
     exe.linkSystemLibrary("gdi32");
