@@ -12,7 +12,7 @@ const MIN_WINDOW_WIDTH: i32 = 400;
 const MIN_WINDOW_HEIGHT: i32 = 300;
 const TOOLBAR_HEIGHT: i32 = 30;
 const COMBOBOX_WIDTH: i32 = 150;
-const COMBOBOX_HEIGHT: i32 = 200;
+const COMBOBOX_HEIGHT: i32 = 250;
 const MAX_BUTTONS: usize = 128;
 
 // control IDs
