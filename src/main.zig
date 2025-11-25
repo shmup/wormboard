@@ -27,6 +27,10 @@ const ID_BROWSE: usize = 3001;
 
 // timer IDs
 const TIMER_BUTTON_RELEASE: usize = 4001;
+const FLASH_DURATION_MS: u32 = 100;
+
+// navigation
+const BANKS_PER_PAGE: i32 = 13;
 
 // UI state
 const UIState = enum {
@@ -53,8 +57,7 @@ fn keyToSoundIndex(vk: u32) ?u16 {
 // unified bank access functions (work for both embedded and runtime modes)
 fn getBankCount() usize {
     if (sound_banks.runtime_mode) {
-        if (g_runtime_banks) |banks| return banks.banks.len;
-        return 0;
+        return if (g_runtime_banks) |banks| banks.banks.len else 0;
     }
     return sound_banks.sound_banks.len;
 }
@@ -98,16 +101,14 @@ fn playWav(bank_index: usize, wav_index: usize) void {
             if (bank_index < banks.banks.len) {
                 const bank = banks.banks[bank_index];
                 if (wav_index < bank.wavs.len) {
-                    const wav = bank.wavs[wav_index];
-                    _ = win32.PlaySoundA(wav.path.ptr, null, win32.SND_FILENAME | win32.SND_ASYNC);
+                    _ = win32.PlaySoundA(bank.wavs[wav_index].path.ptr, null, win32.SND_FILENAME | win32.SND_ASYNC);
                 }
             }
         }
     } else {
         const bank = sound_banks.sound_banks[bank_index];
         if (wav_index < bank.wavs.len) {
-            const wav = bank.wavs[wav_index];
-            _ = win32.PlaySoundA(wav.data.ptr, null, win32.SND_MEMORY | win32.SND_ASYNC);
+            _ = win32.PlaySoundA(bank.wavs[wav_index].data.ptr, null, win32.SND_MEMORY | win32.SND_ASYNC);
         }
     }
 }
@@ -156,6 +157,63 @@ var g_runtime_banks: ?scanner.ScanResult = null;
 var g_browse_button: ?win32.HWND = null;
 var g_browse_label: ?win32.HWND = null;
 var g_allocator: std.mem.Allocator = std.heap.page_allocator;
+
+// button state helper
+fn setButtonState(index: u16, pressed: bool) void {
+    if (g_buttons[index]) |btn| {
+        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, @intFromBool(pressed), 0);
+    }
+}
+
+// release held key and unpress its button
+fn releaseHeldKey() void {
+    if (g_held_key) |vk| {
+        if (keyToSoundIndex(vk)) |index| {
+            setButtonState(index, false);
+        }
+        g_held_key = null;
+    }
+}
+
+// handle WM_KEYDOWN - returns true if handled
+fn handleKeyDown(hwnd: win32.HWND, vk: u32) bool {
+    switch (vk) {
+        win32.VK_UP => changeBankByDelta(hwnd, -1),
+        win32.VK_DOWN => changeBankByDelta(hwnd, 1),
+        win32.VK_PRIOR => changeBankByDelta(hwnd, -BANKS_PER_PAGE),
+        win32.VK_NEXT => changeBankByDelta(hwnd, BANKS_PER_PAGE),
+        win32.VK_HOME => changeBankToIndex(hwnd, 0),
+        win32.VK_END => {
+            const num_banks = getBankCount();
+            if (num_banks > 0) changeBankToIndex(hwnd, num_banks - 1);
+        },
+        else => {
+            // alphanumeric keys - show button pressed (ignore key repeat)
+            if (g_held_key == null) {
+                if (keyToSoundIndex(vk)) |index| {
+                    g_held_key = vk;
+                    setButtonState(index, true);
+                    return true;
+                }
+            }
+            return false;
+        },
+    }
+    return true;
+}
+
+// handle WM_KEYUP - returns true if handled
+fn handleKeyUp(vk: u32) bool {
+    if (g_held_key == vk) {
+        if (keyToSoundIndex(vk)) |index| {
+            setButtonState(index, false);
+            playSound(index);
+        }
+        g_held_key = null;
+        return true;
+    }
+    return false;
+}
 
 fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -210,11 +268,9 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
                         const child_id = win32.GetDlgCtrlID(child);
                         if (child_id >= 0 and child_id < MAX_BUTTONS) {
                             const btn_index: u16 = @intCast(child_id);
-                            if (g_buttons[btn_index]) |btn| {
-                                _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 1, 0);
-                                g_pending_button = btn_index;
-                                _ = win32.SetCapture(hwnd);
-                            }
+                            setButtonState(btn_index, true);
+                            g_pending_button = btn_index;
+                            _ = win32.SetCapture(hwnd);
                         }
                     }
                 }
@@ -240,10 +296,7 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             // handle pending button from dropdown close
             if (g_pending_button) |btn_index| {
                 _ = win32.ReleaseCapture();
-                // release button visual state
-                if (g_buttons[btn_index]) |btn| {
-                    _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
-                }
+                setButtonState(btn_index, false);
                 // check if mouse is still over the same button
                 var pt: win32.POINT = undefined;
                 if (win32.GetCursorPos(&pt) != 0) {
@@ -261,82 +314,30 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_KILLFOCUS => {
-            // release any held button when window loses focus
-            if (g_held_key) |vk| {
-                if (keyToSoundIndex(vk)) |index| {
-                    if (g_buttons[index]) |btn| {
-                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
-                    }
-                }
-                g_held_key = null;
-            }
+            releaseHeldKey();
             // also release pending button from dropdown
             if (g_pending_button) |btn_index| {
                 _ = win32.ReleaseCapture();
-                if (g_buttons[btn_index]) |btn| {
-                    _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
-                }
+                setButtonState(btn_index, false);
                 g_pending_button = null;
             }
             return 0;
         },
         win32.WM_KEYDOWN => {
             const vk: u32 = @truncate(wParam);
-            // up/down arrows navigate banks
-            if (vk == win32.VK_UP) {
-                changeBankByDelta(hwnd, -1);
-                return 0;
-            } else if (vk == win32.VK_DOWN) {
-                changeBankByDelta(hwnd, 1);
-                return 0;
-            } else if (vk == win32.VK_PRIOR) { // page up
-                changeBankByDelta(hwnd, -13);
-                return 0;
-            } else if (vk == win32.VK_NEXT) { // page down
-                changeBankByDelta(hwnd, 13);
-                return 0;
-            } else if (vk == win32.VK_HOME) {
-                changeBankToIndex(hwnd, 0);
-                return 0;
-            } else if (vk == win32.VK_END) {
-                const num_banks = getBankCount();
-                if (num_banks > 0) changeBankToIndex(hwnd, num_banks - 1);
-                return 0;
-            }
-            // alphanumeric keys - show button pressed (ignore key repeat)
-            if (g_held_key == null) {
-                if (keyToSoundIndex(vk)) |index| {
-                    g_held_key = vk;
-                    if (g_buttons[index]) |btn| {
-                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 1, 0);
-                    }
-                    return 0;
-                }
-            }
+            if (handleKeyDown(hwnd, vk)) return 0;
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_KEYUP => {
             const vk: u32 = @truncate(wParam);
-            // release button and play sound
-            if (g_held_key == vk) {
-                if (keyToSoundIndex(vk)) |index| {
-                    if (g_buttons[index]) |btn| {
-                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
-                    }
-                    playSound(index);
-                }
-                g_held_key = null;
-                return 0;
-            }
+            if (handleKeyUp(vk)) return 0;
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_TIMER => {
             if (wParam == TIMER_BUTTON_RELEASE) {
                 _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
                 if (g_flash_button) |btn_index| {
-                    if (g_buttons[btn_index]) |btn| {
-                        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 0, 0);
-                    }
+                    setButtonState(btn_index, false);
                     g_flash_button = null;
                 }
             }
@@ -584,12 +585,9 @@ fn playRandomSound() void {
     const random_index: u16 = @intCast(g_prng.random().uintLessThan(usize, wav_count));
 
     // show button pressed briefly
-    if (g_buttons[random_index]) |btn| {
-        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, 1, 0);
-        // set timer to release button after 100ms
-        _ = win32.SetTimer(g_main_hwnd, TIMER_BUTTON_RELEASE, 100, null);
-        g_flash_button = random_index;
-    }
+    setButtonState(random_index, true);
+    _ = win32.SetTimer(g_main_hwnd, TIMER_BUTTON_RELEASE, FLASH_DURATION_MS, null);
+    g_flash_button = random_index;
 
     playSound(random_index);
 }

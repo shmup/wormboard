@@ -4,6 +4,15 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 
+// generic comparator for types with a .name field
+fn compareByName(comptime T: type) fn (void, T, T) bool {
+    return struct {
+        fn lessThan(_: void, lhs: T, rhs: T) bool {
+            return std.mem.lessThan(u8, lhs.name, rhs.name);
+        }
+    }.lessThan;
+}
+
 pub const RuntimeWav = struct {
     name: [:0]const u8, // display name (lowercase, no extension)
     path: [:0]const u8, // full path to wav file
@@ -82,35 +91,13 @@ fn isWormsRoot(path: []const u8) bool {
 pub fn findWormsRoot(start_path: []const u8, buf: []u8) ?[]const u8 {
     var current: []const u8 = start_path;
 
-    // try current path first
-    if (isWormsRoot(current)) {
-        const len = @min(current.len, buf.len);
-        @memcpy(buf[0..len], current[0..len]);
-        return buf[0..len];
-    }
-
-    // travel up looking for worms root
-    var temp_buf: [win32.MAX_PATH]u8 = undefined;
-    @memcpy(temp_buf[0..current.len], current);
-    var path_len = current.len;
-
-    while (path_len > 3) { // stop at drive root (e.g., "C:\")
-        // find last backslash
-        var i = path_len;
-        while (i > 0) : (i -= 1) {
-            if (temp_buf[i - 1] == '\\') {
-                break;
-            }
+    while (true) {
+        if (isWormsRoot(current)) {
+            const len = @min(current.len, buf.len);
+            @memcpy(buf[0..len], current[0..len]);
+            return buf[0..len];
         }
-        if (i <= 1) break;
-
-        path_len = i - 1;
-        const parent = temp_buf[0..path_len];
-
-        if (isWormsRoot(parent)) {
-            @memcpy(buf[0..path_len], parent);
-            return buf[0..path_len];
-        }
+        current = std.fs.path.dirnameWindows(current) orelse break;
     }
 
     return null;
@@ -189,11 +176,7 @@ pub fn scanSpeechDirectory(allocator: std.mem.Allocator, base_path: []const u8) 
             }
 
             // sort wavs by name
-            std.mem.sort(RuntimeWav, wavs.items, {}, struct {
-                fn lessThan(_: void, lhs: RuntimeWav, rhs: RuntimeWav) bool {
-                    return std.mem.lessThan(u8, lhs.name, rhs.name);
-                }
-            }.lessThan);
+            std.mem.sort(RuntimeWav, wavs.items, {}, compareByName(RuntimeWav));
 
             if (wavs.items.len > 0) {
                 const bank_name = try allocator.dupeZ(u8, entry.name);
@@ -208,11 +191,7 @@ pub fn scanSpeechDirectory(allocator: std.mem.Allocator, base_path: []const u8) 
     }
 
     // sort banks by name
-    std.mem.sort(RuntimeBank, banks.items, {}, struct {
-        fn lessThan(_: void, lhs: RuntimeBank, rhs: RuntimeBank) bool {
-            return std.mem.lessThan(u8, lhs.name, rhs.name);
-        }
-    }.lessThan);
+    std.mem.sort(RuntimeBank, banks.items, {}, compareByName(RuntimeBank));
 
     return .{
         .banks = try banks.toOwnedSlice(allocator),
