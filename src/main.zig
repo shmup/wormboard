@@ -24,6 +24,7 @@ const IDM_EXIT: usize = 2002;
 
 // browse button ID
 const ID_BROWSE: usize = 3001;
+const ID_AUTO_PREVIEW: usize = 3002;
 
 // timer IDs
 const TIMER_BUTTON_RELEASE: usize = 4001;
@@ -116,6 +117,14 @@ fn playWav(bank_index: usize, wav_index: usize) void {
     }
 }
 
+// check if auto-preview is enabled
+fn isAutoPreviewEnabled() bool {
+    if (g_auto_preview_checkbox) |checkbox| {
+        return win32.SendMessageA(checkbox, win32.BM_GETCHECK, 0, 0) == win32.BST_CHECKED;
+    }
+    return true; // default to enabled if checkbox doesn't exist
+}
+
 // apply a bank change immediately (called from debounce timer)
 fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     const num_banks = getBankCount();
@@ -138,14 +147,17 @@ fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
     _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 
-    // play random sound from new bank
-    playRandomSound();
+    // play random sound from new bank (if auto-preview enabled)
+    if (isAutoPreviewEnabled()) {
+        playRandomSound();
+    }
 }
 
 // globals for window state
 var g_buttons: [MAX_BUTTONS]?win32.HWND = [_]?win32.HWND{null} ** MAX_BUTTONS;
 var g_num_buttons: usize = 0;
 var g_combobox: ?win32.HWND = null;
+var g_auto_preview_checkbox: ?win32.HWND = null;
 var g_current_bank: usize = 0;
 var g_scroll_pos: i32 = 0;
 var g_content_height: i32 = 0;
@@ -455,6 +467,27 @@ fn createCombobox(hwnd: win32.HWND) void {
         }
         _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, 0, 0);
     }
+
+    // create auto-preview checkbox to the right of combobox
+    g_auto_preview_checkbox = win32.CreateWindowExA(
+        0,
+        "BUTTON",
+        "auto-preview",
+        win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_AUTOCHECKBOX,
+        BUTTON_PADDING + COMBOBOX_WIDTH + BUTTON_PADDING,
+        BUTTON_PADDING + 3, // slight vertical offset to align with combobox text
+        100,
+        20,
+        hwnd,
+        @ptrFromInt(ID_AUTO_PREVIEW),
+        hinstance,
+        null,
+    );
+
+    // default to checked
+    if (g_auto_preview_checkbox) |checkbox| {
+        _ = win32.SendMessageA(checkbox, win32.BM_SETCHECK, win32.BST_CHECKED, 0);
+    }
 }
 
 fn createButtonsForBank(hwnd: win32.HWND, bank_index: usize) void {
@@ -675,8 +708,8 @@ fn handleBankChangeInternal(hwnd: win32.HWND, play_random: bool) void {
             _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
             _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 
-            // play random sound from new bank
-            if (play_random) {
+            // play random sound from new bank (if auto-preview enabled)
+            if (play_random and isAutoPreviewEnabled()) {
                 playRandomSound();
             }
         }

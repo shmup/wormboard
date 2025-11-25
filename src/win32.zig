@@ -142,6 +142,10 @@ pub const CBN_CLOSEUP: u16 = 8;
 // button notifications
 pub const BN_CLICKED: u16 = 0;
 pub const BM_SETSTATE: u32 = 0x00F3;
+pub const BM_GETCHECK: u32 = 0x00F0;
+pub const BM_SETCHECK: u32 = 0x00F1;
+pub const BS_AUTOCHECKBOX: u32 = 0x00000003;
+pub const BST_CHECKED: u32 = 0x0001;
 
 // menu flags
 pub const MF_STRING: u32 = 0x00000000;
