@@ -1,5 +1,6 @@
 .zig-cache/
-zig-out/
 src/.wav-cache/
-src/wavs
 src/sound_banks.zig
+src/wavs
+wavs
+zig-out/
