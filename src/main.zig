@@ -569,19 +569,33 @@ fn layoutBrowseUI(hwnd: win32.HWND) void {
         const btn_y = start_y + label_height + spacing;
         _ = win32.MoveWindow(btn, btn_x, btn_y, button_width, button_height, 1);
     }
+
+    // hide scrollbar in browse mode
+    var si = win32.SCROLLINFO{
+        .fMask = win32.SIF_ALL,
+        .nMin = 0,
+        .nMax = 0,
+        .nPage = 1,
+        .nPos = 0,
+    };
+    _ = win32.SetScrollInfo(hwnd, win32.SB_VERT, &si, 1);
 }
 
 fn handleBrowseClick(hwnd: win32.HWND) void {
     var path_buf: [win32.MAX_PATH]u8 = undefined;
     if (scanner.browseForFolder(hwnd, &path_buf)) |path| {
-        // try to scan the selected directory
-        if (scanner.scanSpeechDirectory(g_allocator, path)) |result| {
+        // try to find worms root (travel up if needed)
+        var root_buf: [win32.MAX_PATH]u8 = undefined;
+        const worms_root = scanner.findWormsRoot(path, &root_buf) orelse path;
+
+        // try to scan the selected/found directory
+        if (scanner.scanSpeechDirectory(g_allocator, worms_root)) |result| {
             g_runtime_banks = result;
             transitionToNormalUI(hwnd);
         } else |_| {
             _ = win32.MessageBoxA(
                 hwnd,
-                "Could not find DATA\\User\\Speech in the selected folder.\n\nPlease select your Worms Armageddon installation directory.",
+                "Could not find DATA\\User\\Speech in the selected folder or parent directories.\n\nPlease select your Worms Armageddon installation directory.",
                 "Invalid folder",
                 win32.MB_OK | win32.MB_ICONINFORMATION,
             );
@@ -608,9 +622,26 @@ fn transitionToNormalUI(hwnd: win32.HWND) void {
     _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 }
 
+// parse command line arguments
+fn parseArgs() bool {
+    const cmd_line = win32.GetCommandLineA();
+    if (cmd_line == null) return false;
+
+    // find -b or --browse in command line
+    const cmd = std.mem.span(cmd_line.?);
+    return std.mem.indexOf(u8, cmd, " -b") != null or
+        std.mem.indexOf(u8, cmd, " --browse") != null;
+}
+
 // runtime initialization (called before window creation)
-fn initRuntime() void {
+fn initRuntime(force_browse: bool) void {
     if (!sound_banks.runtime_mode) return;
+
+    // skip registry lookup if browse forced
+    if (force_browse) {
+        g_ui_state = .browse_needed;
+        return;
+    }
 
     // try to read worms path from registry
     var path_buf: [win32.MAX_PATH]u8 = undefined;
@@ -628,8 +659,11 @@ fn initRuntime() void {
 }
 
 pub fn main() void {
+    // parse command line args
+    const force_browse = parseArgs();
+
     // initialize runtime mode (check registry, scan speech directory)
-    initRuntime();
+    initRuntime(force_browse);
 
     const hinstance = win32.GetModuleHandleA(null);
 

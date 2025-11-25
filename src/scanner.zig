@@ -68,6 +68,54 @@ pub fn getWormsPath(buf: []u8) ?[]const u8 {
     return buf[0..len];
 }
 
+// check if path looks like worms root (has DATA directory)
+fn isWormsRoot(path: []const u8) bool {
+    var check_buf: [win32.MAX_PATH]u8 = undefined;
+    const data_path = std.fmt.bufPrint(&check_buf, "{s}\\DATA", .{path}) catch return false;
+
+    var dir = std.fs.cwd().openDir(data_path, .{}) catch return false;
+    dir.close();
+    return true;
+}
+
+// find worms root by traveling up from given path
+pub fn findWormsRoot(start_path: []const u8, buf: []u8) ?[]const u8 {
+    var current: []const u8 = start_path;
+
+    // try current path first
+    if (isWormsRoot(current)) {
+        const len = @min(current.len, buf.len);
+        @memcpy(buf[0..len], current[0..len]);
+        return buf[0..len];
+    }
+
+    // travel up looking for worms root
+    var temp_buf: [win32.MAX_PATH]u8 = undefined;
+    @memcpy(temp_buf[0..current.len], current);
+    var path_len = current.len;
+
+    while (path_len > 3) { // stop at drive root (e.g., "C:\")
+        // find last backslash
+        var i = path_len;
+        while (i > 0) : (i -= 1) {
+            if (temp_buf[i - 1] == '\\') {
+                break;
+            }
+        }
+        if (i <= 1) break;
+
+        path_len = i - 1;
+        const parent = temp_buf[0..path_len];
+
+        if (isWormsRoot(parent)) {
+            @memcpy(buf[0..path_len], parent);
+            return buf[0..path_len];
+        }
+    }
+
+    return null;
+}
+
 // scan a directory for sound banks
 pub fn scanSpeechDirectory(allocator: std.mem.Allocator, base_path: []const u8) !ScanResult {
     // build path to Speech directory: <base_path>\DATA\User\Speech

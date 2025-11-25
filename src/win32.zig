@@ -216,6 +216,7 @@ pub extern "user32" fn DestroyWindow(HWND) callconv(.c) BOOL;
 pub extern "user32" fn SendMessageA(HWND, u32, WPARAM, LPARAM) callconv(.c) LRESULT;
 pub extern "user32" fn InvalidateRect(?HWND, ?*const RECT, BOOL) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleHandleA(?[*:0]const u8) callconv(.c) ?HINSTANCE;
+pub extern "kernel32" fn GetCommandLineA() callconv(.c) ?[*:0]const u8;
 pub extern "gdi32" fn GetStockObject(i32) callconv(.c) ?HBRUSH;
 pub extern "winmm" fn PlaySoundA(?[*]const u8, ?HINSTANCE, u32) callconv(.c) BOOL;
 pub extern "user32" fn RedrawWindow(?HWND, ?*const RECT, ?*anyopaque, u32) callconv(.c) BOOL;
