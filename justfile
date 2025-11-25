@@ -10,6 +10,10 @@ build:
 build-embed:
     zig build -Dembed=true
 
+# build embedded mode with ADPCM compression (~4x smaller, requires ffmpeg)
+build-embed-compressed:
+    zig build -Dembed=true -Dcompress=true
+
 # build release runtime mode
 release:
     zig build -Doptimize=ReleaseSafe
@@ -18,6 +22,10 @@ release:
 release-embed:
     zig build -Doptimize=ReleaseSafe -Dembed=true
 
+# build release embedded with ADPCM compression (~4x smaller)
+release-embed-compressed:
+    zig build -Doptimize=ReleaseSafe -Dembed=true -Dcompress=true
+
 # build release small (smallest binary)
 release-small:
     zig build -Doptimize=ReleaseSmall
@@ -25,6 +33,10 @@ release-small:
 # build release small embedded
 release-small-embed:
     zig build -Doptimize=ReleaseSmall -Dembed=true
+
+# build release small embedded with compression (smallest possible)
+release-small-embed-compressed:
+    zig build -Doptimize=ReleaseSmall -Dembed=true -Dcompress=true
 
 # run the executable (uses wine on non-windows)
 run: build

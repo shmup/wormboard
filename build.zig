@@ -12,10 +12,12 @@ pub fn build(b: *std.Build) void {
 
     // build option: embed wav files in binary (fat binary) or load from disk (runtime scan)
     const embed = b.option(bool, "embed", "Embed WAV files in binary (default: false for runtime scan)") orelse false;
+    // build option: compress wavs to ADPCM (~4x smaller, requires ffmpeg)
+    const compress = b.option(bool, "compress", "Convert WAVs to ADPCM when embedding (default: false)") orelse false;
 
     if (embed) {
         // generate sound_banks.zig at configure time (writes to src/)
-        generateSoundBanksFile(b.allocator) catch @panic("failed to generate sound banks");
+        generateSoundBanksFile(b.allocator, compress) catch @panic("failed to generate sound banks");
     } else {
         // generate minimal runtime stub
         generateRuntimeStub(b.allocator) catch @panic("failed to generate runtime stub");
@@ -57,7 +59,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 }
 
-fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
+fn generateSoundBanksFile(allocator: std.mem.Allocator, compress: bool) !void {
     var output: std.ArrayListUnmanaged(u8) = .empty;
     const writer = output.writer(allocator);
 
@@ -68,6 +70,15 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
         return error.FailedToOpenDir;
     };
     defer banks_dir.close();
+
+    // if compressing, create cache directory (must be inside src/ for @embedFile)
+    const cache_path = "src/.wav-cache/Speech-Banks";
+    if (compress) {
+        std.fs.cwd().makePath(cache_path) catch |err| {
+            std.debug.print("failed to create cache dir {s}: {}\n", .{ cache_path, err });
+            return error.FailedToCreateCacheDir;
+        };
+    }
 
     var banks: std.ArrayListUnmanaged(BankInfo) = .empty;
     defer banks.deinit(allocator);
@@ -80,11 +91,25 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
             var bank_dir = banks_dir.openDir(entry.name, .{ .iterate = true }) catch continue;
             defer bank_dir.close();
 
+            // create bank subdir in cache if compressing
+            if (compress) {
+                var cache_bank_path_buf: [512]u8 = undefined;
+                const cache_bank_path = std.fmt.bufPrint(&cache_bank_path_buf, "{s}/{s}", .{ cache_path, entry.name }) catch continue;
+                std.fs.cwd().makePath(cache_bank_path) catch continue;
+            }
+
             var wav_iter = bank_dir.iterate();
             while (try wav_iter.next()) |wav_entry| {
                 if (wav_entry.kind == .file) {
                     const name = wav_entry.name;
                     if (std.mem.endsWith(u8, name, ".WAV") or std.mem.endsWith(u8, name, ".wav")) {
+                        if (compress) {
+                            // convert to ADPCM via ffmpeg
+                            convertToAdpcm(allocator, banks_path, entry.name, name, cache_path) catch |err| {
+                                std.debug.print("warning: failed to convert {s}/{s}: {}\n", .{ entry.name, name, err });
+                                continue;
+                            };
+                        }
                         try wavs.append(allocator, try allocator.dupe(u8, name));
                     }
                 }
@@ -131,6 +156,9 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
         \\
     );
 
+    // path prefix for @embedFile (relative to src/)
+    const embed_prefix = if (compress) ".wav-cache/Speech-Banks" else "wavs/Speech-Banks";
+
     // generate each bank's wav array
     for (banks.items) |bank| {
         var ident_buf: [128]u8 = undefined;
@@ -140,7 +168,7 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
         for (bank.wavs) |wav| {
             var base_buf: [128]u8 = undefined;
             const base = wavBaseName(wav, &base_buf);
-            try writer.print("    .{{ .name = \"{s}\", .data = @embedFile(\"wavs/Speech-Banks/{s}/{s}\") }},\n", .{ base, bank.name, wav });
+            try writer.print("    .{{ .name = \"{s}\", .data = @embedFile(\"{s}/{s}/{s}\") }},\n", .{ base, embed_prefix, bank.name, wav });
         }
         try writer.writeAll("};\n\n");
     }
@@ -158,6 +186,33 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator) !void {
     const file = try std.fs.cwd().createFile("src/sound_banks.zig", .{});
     defer file.close();
     try file.writeAll(try output.toOwnedSlice(allocator));
+}
+
+fn convertToAdpcm(allocator: std.mem.Allocator, src_base: []const u8, bank: []const u8, wav: []const u8, cache_base: []const u8) !void {
+    // build input path: src/wavs/Speech-Banks/{bank}/{wav}
+    var input_buf: [512]u8 = undefined;
+    const input_path = try std.fmt.bufPrint(&input_buf, "{s}/{s}/{s}", .{ src_base, bank, wav });
+
+    // build output path: .wav-cache/Speech-Banks/{bank}/{wav}
+    var output_buf: [512]u8 = undefined;
+    const output_path = try std.fmt.bufPrint(&output_buf, "{s}/{s}/{s}", .{ cache_base, bank, wav });
+
+    // check if output already exists and is newer than input
+    const input_stat = try std.fs.cwd().statFile(input_path);
+    if (std.fs.cwd().statFile(output_path)) |output_stat| {
+        if (output_stat.mtime >= input_stat.mtime) {
+            return; // already up to date
+        }
+    } else |_| {}
+
+    // run ffmpeg to convert
+    var child = std.process.Child.init(
+        &.{ "ffmpeg", "-y", "-i", input_path, "-c:a", "adpcm_ima_wav", output_path },
+        allocator,
+    );
+    child.stderr_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    _ = try child.spawnAndWait();
 }
 
 const BankInfo = struct {
