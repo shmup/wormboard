@@ -1,3 +1,8 @@
+# use bash for cross-platform compatibility
+set shell := ["bash", "-c"]
+
+exe := if os() == "windows" { "zig-out/bin/wormboard.exe" } else { "wine zig-out/bin/wormboard.exe" }
+
 build:
     zig build
 
@@ -13,13 +18,22 @@ release:
 release-embed:
     zig build -Doptimize=ReleaseSafe -Dembed=true
 
-# run the executable
-run: build
-    zig-out\bin\wormboard.exe
+# build release small (smallest binary)
+release-small:
+    zig build -Doptimize=ReleaseSmall
 
-run-wine: build
-    wine zig-out\bin\wormboard.exe
+# build release small embedded
+release-small-embed:
+    zig build -Doptimize=ReleaseSmall -Dembed=true
+
+# run the executable (uses wine on non-windows)
+run: build
+    {{ exe }}
+
+# run with browse flag
+run-browse: build
+    {{ exe }} -b
 
 # run embedded version
 run-embed: build-embed
-    zig-out\bin\wormboard.exe
+    {{ exe }}
