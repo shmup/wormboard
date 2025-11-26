@@ -147,6 +147,9 @@ fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     const num_banks = getBankCount();
     if (num_banks == 0 or target >= num_banks) return;
 
+    // stop any currently playing sound
+    _ = win32.PlaySoundA(null, null, 0);
+
     g_current_bank = target;
     g_scroll_pos = 0;
 
@@ -208,6 +211,7 @@ fn performBankUpdate(hwnd: win32.HWND) void {
     _ = win32.GetClientRect(hwnd, &rect);
     rect.top = TOOLBAR_HEIGHT; // exclude toolbar from redraw
     _ = win32.RedrawWindow(hwnd, &rect, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
+
 }
 
 // }}}
@@ -328,11 +332,16 @@ fn handleKeyDown(hwnd: win32.HWND, vk: u32) bool {
 
 // handle WM_KEYUP - returns true if handled
 fn handleKeyUp(hwnd: win32.HWND, vk: u32) bool {
-    // nav key release - stop repeat timer
+    // nav key release - stop repeat timer and trigger auto-preview
     if (g_held_nav_key == vk) {
         g_held_nav_key = null;
         g_nav_repeat_started = false;
         _ = win32.KillTimer(hwnd, TIMER_NAV_REPEAT);
+
+        // schedule auto-preview (short delay to let any pending bank update complete)
+        if (isAutoPreviewEnabled()) {
+            _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
+        }
         return true;
     }
 
@@ -721,8 +730,6 @@ fn createButtonsForBank(hwnd: win32.HWND, bank_index: usize) void {
         _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
         g_flash_button = null;
     }
-    // kill any pending auto-preview timer (will be restarted if needed)
-    _ = win32.KillTimer(hwnd, TIMER_AUTO_PREVIEW);
 
     // destroy existing buttons
     for (g_buttons[0..g_num_buttons]) |maybe_btn| {
