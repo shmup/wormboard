@@ -4,3 +4,8 @@ src/sound_banks.zig
 src/wavs
 wavs
 zig-out/
+dist/
+
+.claude/
+CLAUDE.md
+

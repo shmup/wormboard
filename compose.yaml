@@ -1,0 +1,14 @@
+services:
+  build:
+    build: .
+    environment:
+      OPTIMIZE: ${OPTIMIZE:-ReleaseSafe}
+      EMBED: ${EMBED:-false}
+      COMPRESS: ${COMPRESS:-false}
+      HOST_UID: ${MYUID:-1000}
+      HOST_GID: ${MYGID:-1000}
+    volumes:
+      # wavs for embedded builds
+      - ./wavs:/build/src/wavs:ro,z
+      # output directory
+      - ./dist:/out:z

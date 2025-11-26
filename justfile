@@ -49,3 +49,22 @@ run-browse: build
 # run embedded version
 run-embed: build-embed
     {{ exe }}
+
+# docker builds - output goes to ./dist/
+docker-build:
+    MYUID=$(id -u) MYGID=$(id -g) docker compose run --rm build
+
+docker-embed:
+    MYUID=$(id -u) MYGID=$(id -g) EMBED=true docker compose run --rm build
+
+docker-embed-compressed:
+    MYUID=$(id -u) MYGID=$(id -g) EMBED=true COMPRESS=true docker compose run --rm build
+
+docker-small:
+    MYUID=$(id -u) MYGID=$(id -g) OPTIMIZE=ReleaseSmall docker compose run --rm build
+
+docker-small-embed:
+    MYUID=$(id -u) MYGID=$(id -g) OPTIMIZE=ReleaseSmall EMBED=true docker compose run --rm build
+
+docker-small-embed-compressed:
+    MYUID=$(id -u) MYGID=$(id -g) OPTIMIZE=ReleaseSmall EMBED=true COMPRESS=true docker compose run --rm build
