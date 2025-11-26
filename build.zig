@@ -182,8 +182,8 @@ fn generateSoundBanksFile(allocator: std.mem.Allocator, compress: bool) !void {
     }
     try writer.writeAll("};\n");
 
-    // write to src/sound_banks.zig
-    const file = try std.fs.cwd().createFile("src/sound_banks.zig", .{});
+    // write to src/sound_banks.g.zig
+    const file = try std.fs.cwd().createFile("src/sound_banks.g.zig", .{});
     defer file.close();
     try file.writeAll(try output.toOwnedSlice(allocator));
 }
@@ -271,7 +271,7 @@ fn generateRuntimeStub(allocator: std.mem.Allocator) !void {
         \\
     ;
 
-    const file = try std.fs.cwd().createFile("src/sound_banks.zig", .{});
+    const file = try std.fs.cwd().createFile("src/sound_banks.g.zig", .{});
     defer file.close();
     try file.writeAll(stub);
 }

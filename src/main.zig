@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
-const sound_banks = @import("sound_banks.zig");
+const sound_banks = @import("sound_banks.g.zig");
 const scanner = @import("scanner.zig");
 
 // constants {{{
