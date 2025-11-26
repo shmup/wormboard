@@ -208,8 +208,12 @@ var g_cached_content_height: i32 = 0;
 
 // button state helper
 fn setButtonState(index: u16, pressed: bool) void {
+    if (index >= MAX_BUTTONS) return;
     if (g_buttons[index]) |btn| {
         _ = win32.SendMessageA(btn, win32.BM_SETSTATE, @intFromBool(pressed), 0);
+        // force immediate repaint
+        _ = win32.InvalidateRect(btn, null, 1);
+        _ = win32.UpdateWindow(btn);
     }
 }
 
@@ -636,6 +640,12 @@ fn createCombobox(hwnd: win32.HWND) void {
 
 fn createButtonsForBank(hwnd: win32.HWND, bank_index: usize) void {
     const hinstance = win32.GetModuleHandleA(null);
+
+    // clear flash state before destroying buttons (index becomes invalid)
+    if (g_flash_button != null) {
+        _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
+        g_flash_button = null;
+    }
 
     // destroy existing buttons
     for (g_buttons[0..g_num_buttons]) |maybe_btn| {
