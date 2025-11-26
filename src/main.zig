@@ -2,38 +2,10 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const sound_banks = @import("sound_banks.g.zig");
 const scanner = @import("scanner.zig");
-
-// constants {{{
-
-// layout constants
-const BUTTON_HEIGHT: i32 = 25;
-const BUTTON_PADDING: i32 = 2;
-const BUTTON_CHAR_WIDTH: i32 = 7;
-const MIN_BUTTON_WIDTH: i32 = 40;
-const MIN_WINDOW_WIDTH: i32 = 600;
-const MIN_WINDOW_HEIGHT: i32 = 460;
-const TOOLBAR_PADDING: i32 = 8; // vertical padding above/below toolbar controls
-const TOOLBAR_ITEM_SPACING: i32 = 4; // horizontal spacing between toolbar controls
-const TOOLBAR_CTRL_HEIGHT: i32 = 23; // match combobox edit height
-const TOOLBAR_HEIGHT: i32 = TOOLBAR_CTRL_HEIGHT + 2 * TOOLBAR_PADDING;
-const COMBOBOX_WIDTH: i32 = 160;
-const COMBOBOX_HEIGHT: i32 = 250;
-const RANDOM_BUTTON_WIDTH: i32 = 55;
-const ICON_SIZE: i32 = 22; // fill toolbar height
-const MAX_BUTTONS: usize = 128;
-
-// control IDs
-const ID_COMBOBOX: usize = 1000;
-
-// menu IDs
-const IDM_ABOUT: usize = 2001;
-const IDM_EXIT: usize = 2002;
-const IDM_CLOSE: usize = 2003;
-
-// browse button ID
-const ID_BROWSE: usize = 3001;
-const ID_AUTO_PREVIEW: usize = 3002;
-const ID_RANDOM: usize = 3003;
+const ui = @import("ui.zig");
+const input = @import("input.zig");
+const drawing = @import("drawing.zig");
+const browse = @import("browse.zig");
 
 // timer IDs
 const TIMER_BUTTON_RELEASE: usize = 4001;
@@ -41,51 +13,72 @@ const TIMER_NAV_REPEAT: usize = 4002;
 const TIMER_AUTO_PREVIEW: usize = 4003;
 const TIMER_BANK_UPDATE: usize = 4004;
 const FLASH_DURATION_MS: u32 = 100;
-const NAV_INITIAL_DELAY_MS: u32 = 150; // delay before repeat starts
-const NAV_REPEAT_MS: u32 = 0; // fast repeat rate after initial delay
-const AUTO_PREVIEW_DELAY_MS: u32 = 150; // debounce delay for auto-preview after nav
-const BANK_UPDATE_DELAY_MS: u32 = 30; // debounce delay for button recreation
+const NAV_INITIAL_DELAY_MS: u32 = 150;
+const NAV_REPEAT_MS: u32 = 0;
+const AUTO_PREVIEW_DELAY_MS: u32 = 150;
+const BANK_UPDATE_DELAY_MS: u32 = 30;
 
-// navigation
-const BANKS_PER_PAGE: i32 = 13;
-
-// UI state
+// UI state enum
 const UIState = enum {
     normal,
     browse_needed,
 };
 
+// consolidated application state {{{
+const AppState = struct {
+    // window handles
+    buttons: [ui.MAX_BUTTONS]?win32.HWND = [_]?win32.HWND{null} ** ui.MAX_BUTTONS,
+    num_buttons: usize = 0,
+    combobox: ?win32.HWND = null,
+    auto_preview_checkbox: ?win32.HWND = null,
+    random_button: ?win32.HWND = null,
+    main_hwnd: ?win32.HWND = null,
+    icon_ctrl: ?win32.HWND = null,
+    browse_button: ?win32.HWND = null,
+    browse_label: ?win32.HWND = null,
+    toolbar_brush: ?win32.HBRUSH = null,
+
+    // current state
+    current_bank: usize = 0,
+    scroll_pos: i32 = 0,
+    content_height: i32 = 0,
+    ui_state: UIState = .normal,
+    buttons_hidden: bool = false,
+
+    // input state
+    held_key: ?u32 = null,
+    held_nav_key: ?u32 = null,
+    nav_repeat_started: bool = false,
+    pending_button: ?u16 = null,
+    flash_button: ?u16 = null,
+
+    // runtime mode
+    runtime_banks: ?scanner.ScanResult = null,
+    allocator: std.mem.Allocator = std.heap.page_allocator,
+
+    // cached grid layout
+    grid_cache: ui.GridCache = .{},
+
+    // prng
+    prng: std.Random.DefaultPrng = undefined,
+};
+
 // }}}
+
+var g: AppState = .{};
 
 // sound bank access {{{
 
-// keyboard mapping: 1-9, 0, then QWERTY order
-// virtual key codes: '0'-'9' = 0x30-0x39, 'A'-'Z' = 0x41-0x5A
-const QWERTY_KEYS = "QWERTYUIOPASDFGHJKLZXCVBNM";
-
-fn keyToSoundIndex(vk: u32) ?u16 {
-    // number keys: 1-9 -> 0-8, 0 -> 9
-    if (vk >= '1' and vk <= '9') return @intCast(vk - '1');
-    if (vk == '0') return 9;
-
-    // letter keys: QWERTY order -> 10+
-    for (QWERTY_KEYS, 0..) |key, i| {
-        if (vk == key) return @intCast(10 + i);
-    }
-    return null;
-}
-
-// unified bank access functions (work for both embedded and runtime modes)
 fn getBankCount() usize {
     if (sound_banks.runtime_mode) {
-        return if (g_runtime_banks) |banks| banks.banks.len else 0;
+        return if (g.runtime_banks) |banks| banks.banks.len else 0;
     }
     return sound_banks.sound_banks.len;
 }
 
 fn getBankName(index: usize) [:0]const u8 {
     if (sound_banks.runtime_mode) {
-        if (g_runtime_banks) |banks| {
+        if (g.runtime_banks) |banks| {
             if (index < banks.banks.len) return banks.banks[index].name;
         }
         return "";
@@ -95,7 +88,7 @@ fn getBankName(index: usize) [:0]const u8 {
 
 fn getWavCount(bank_index: usize) usize {
     if (sound_banks.runtime_mode) {
-        if (g_runtime_banks) |banks| {
+        if (g.runtime_banks) |banks| {
             if (bank_index < banks.banks.len) return banks.banks[bank_index].wavs.len;
         }
         return 0;
@@ -105,7 +98,7 @@ fn getWavCount(bank_index: usize) usize {
 
 fn getWavName(bank_index: usize, wav_index: usize) []const u8 {
     if (sound_banks.runtime_mode) {
-        if (g_runtime_banks) |banks| {
+        if (g.runtime_banks) |banks| {
             if (bank_index < banks.banks.len) {
                 const bank = banks.banks[bank_index];
                 if (wav_index < bank.wavs.len) return bank.wavs[wav_index].name;
@@ -118,7 +111,7 @@ fn getWavName(bank_index: usize, wav_index: usize) []const u8 {
 
 fn playWav(bank_index: usize, wav_index: usize) void {
     if (sound_banks.runtime_mode) {
-        if (g_runtime_banks) |banks| {
+        if (g.runtime_banks) |banks| {
             if (bank_index < banks.banks.len) {
                 const bank = banks.banks[bank_index];
                 if (wav_index < bank.wavs.len) {
@@ -134,227 +127,242 @@ fn playWav(bank_index: usize, wav_index: usize) void {
     }
 }
 
-// check if auto-preview is enabled
-fn isAutoPreviewEnabled() bool {
-    if (g_auto_preview_checkbox) |checkbox| {
-        return win32.SendMessageA(checkbox, win32.BM_GETCHECK, 0, 0) == win32.BST_CHECKED;
-    }
-    return true; // default to enabled if checkbox doesn't exist
-}
+// }}}
 
-// lightweight bank change - just update state and combobox, debounce heavy UI work
+// bank change handling {{{
+
 fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     const num_banks = getBankCount();
     if (num_banks == 0 or target >= num_banks) return;
 
-    // stop any currently playing sound
     _ = win32.PlaySoundA(null, null, 0);
 
-    g_current_bank = target;
-    g_scroll_pos = 0;
+    g.current_bank = target;
+    g.scroll_pos = 0;
 
-    // update combobox immediately (lightweight)
-    if (g_combobox) |combo| {
+    if (g.combobox) |combo| {
         _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, @intCast(target), 0);
     }
 
-    // hide buttons during rapid navigation (avoids showing wrong bank's buttons)
     hideAllButtons();
-
-    // debounce heavy UI work (button creation)
     _ = win32.SetTimer(hwnd, TIMER_BANK_UPDATE, BANK_UPDATE_DELAY_MS, null);
 
-    // debounce auto-preview
-    if (isAutoPreviewEnabled()) {
+    if (ui.isAutoPreviewEnabled(g.auto_preview_checkbox)) {
         _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
     }
 }
 
-// hide all buttons quickly (used during rapid navigation)
 fn hideAllButtons() void {
-    // skip if already hidden (avoid redundant work during rapid nav)
-    if (g_buttons_hidden) return;
+    if (g.buttons_hidden) return;
 
-    // clear flash state
-    if (g_flash_button) |btn_index| {
-        setButtonState(btn_index, false);
-        if (g_main_hwnd) |hwnd| {
+    if (g.flash_button) |btn_index| {
+        ui.setButtonState(&g.buttons, btn_index, false);
+        if (g.main_hwnd) |hwnd| {
             _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
         }
-        g_flash_button = null;
+        g.flash_button = null;
     }
 
-    // hide buttons (much faster than destroying)
-    for (g_buttons[0..g_num_buttons]) |maybe_btn| {
-        if (maybe_btn) |btn| {
-            _ = win32.ShowWindow(btn, win32.SW_HIDE);
-        }
-    }
-
-    g_buttons_hidden = true;
+    ui.hideAllButtons(g.buttons[0..g.num_buttons]);
+    g.buttons_hidden = true;
 }
 
-// do the heavy UI update (called from debounce timer)
 fn performBankUpdate(hwnd: win32.HWND) void {
-    // freeze painting
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 0, 0);
 
-    createButtonsForBank(hwnd, g_current_bank);
+    // clear flash state before destroying buttons
+    if (g.flash_button) |btn_index| {
+        ui.setButtonState(&g.buttons, btn_index, false);
+        _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
+        g.flash_button = null;
+    }
+
+    ui.createButtonsForBank(hwnd, &g.buttons, &g.num_buttons, g.current_bank, getWavCount, getWavName);
     layoutControls(hwnd);
 
-    // buttons are now visible again
-    g_buttons_hidden = false;
+    g.buttons_hidden = false;
 
-    // resume painting and force redraw (only button area, not toolbar)
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
     var rect: win32.RECT = undefined;
     _ = win32.GetClientRect(hwnd, &rect);
-    rect.top = TOOLBAR_HEIGHT; // exclude toolbar from redraw
+    rect.top = ui.TOOLBAR_HEIGHT;
     _ = win32.RedrawWindow(hwnd, &rect, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
-
 }
-
-// }}}
-
-// globals {{{
-
-// globals for window state
-var g_buttons: [MAX_BUTTONS]?win32.HWND = [_]?win32.HWND{null} ** MAX_BUTTONS;
-var g_num_buttons: usize = 0;
-var g_combobox: ?win32.HWND = null;
-var g_auto_preview_checkbox: ?win32.HWND = null;
-var g_random_button: ?win32.HWND = null;
-var g_current_bank: usize = 0;
-var g_scroll_pos: i32 = 0;
-var g_content_height: i32 = 0;
-var g_main_hwnd: ?win32.HWND = null;
-var g_held_key: ?u32 = null; // tracks sound key held down to ignore repeats
-var g_held_nav_key: ?u32 = null; // tracks nav key held (for our own repeat timer)
-var g_nav_repeat_started: bool = false; // true after initial delay, now repeating fast
-var g_pending_button: ?u16 = null; // tracks button pressed while dropdown was closing
-var g_prng: std.Random.DefaultPrng = undefined;
-var g_flash_button: ?u16 = null; // button being flashed after bank change
-var g_buttons_hidden: bool = false; // true when buttons are hidden during rapid nav
-
-// runtime mode state
-var g_ui_state: UIState = .normal;
-var g_runtime_banks: ?scanner.ScanResult = null;
-var g_browse_button: ?win32.HWND = null;
-var g_browse_label: ?win32.HWND = null;
-var g_allocator: std.mem.Allocator = std.heap.page_allocator;
-var g_toolbar_brush: ?win32.HBRUSH = null;
-var g_icon_ctrl: ?win32.HWND = null;
-
-// cached grid layout (avoid recalculating every layout call)
-var g_cached_client_width: i32 = 0;
-var g_cached_num_buttons: usize = 0;
-var g_cached_num_cols: usize = 0;
-var g_cached_btn_width: i32 = 0;
-var g_cached_content_height: i32 = 0;
 
 // }}}
 
 // input handling {{{
 
-// button state helper
-fn setButtonState(index: u16, pressed: bool) void {
-    if (index >= MAX_BUTTONS) return;
-    if (g_buttons[index]) |btn| {
-        _ = win32.SendMessageA(btn, win32.BM_SETSTATE, @intFromBool(pressed), 0);
-        // force immediate repaint
-        _ = win32.InvalidateRect(btn, null, 1);
-        _ = win32.UpdateWindow(btn);
-    }
-}
-
-// release held key and unpress its button
 fn releaseHeldKey() void {
-    if (g_held_key) |vk| {
-        if (keyToSoundIndex(vk)) |index| {
-            setButtonState(index, false);
+    if (g.held_key) |vk| {
+        if (input.keyToSoundIndex(vk)) |index| {
+            ui.setButtonState(&g.buttons, index, false);
         }
-        g_held_key = null;
+        g.held_key = null;
     }
 }
 
-// apply nav key action (called on first press and by repeat timer)
 fn applyNavKey(hwnd: win32.HWND, vk: u32) void {
-    const num_banks = getBankCount();
-    if (num_banks == 0) return;
-
-    const base: i32 = @intCast(g_current_bank);
-    const num: i32 = @intCast(num_banks);
-
-    var target: i32 = switch (vk) {
-        win32.VK_UP => base - 1,
-        win32.VK_DOWN => base + 1,
-        win32.VK_PRIOR => base - BANKS_PER_PAGE,
-        win32.VK_NEXT => base + BANKS_PER_PAGE,
-        win32.VK_HOME => 0,
-        win32.VK_END => num - 1,
-        else => base,
-    };
-
-    // wrap around
-    target = @mod(target, num);
-
-    applyBankChange(hwnd, @intCast(target));
-}
-
-// handle WM_KEYDOWN - returns true if handled
-fn handleKeyDown(hwnd: win32.HWND, vk: u32) bool {
-    switch (vk) {
-        win32.VK_UP, win32.VK_DOWN, win32.VK_PRIOR, win32.VK_NEXT, win32.VK_HOME, win32.VK_END => {
-            // ignore if already holding a nav key (we handle repeat ourselves)
-            if (g_held_nav_key != null) return true;
-
-            g_held_nav_key = vk;
-            g_nav_repeat_started = false;
-            applyNavKey(hwnd, vk);
-
-            // start timer with initial delay (longer before repeat kicks in)
-            _ = win32.SetTimer(hwnd, TIMER_NAV_REPEAT, NAV_INITIAL_DELAY_MS, null);
-        },
-        else => {
-            // alphanumeric keys - show button pressed (ignore key repeat)
-            if (g_held_key == null) {
-                if (keyToSoundIndex(vk)) |index| {
-                    g_held_key = vk;
-                    setButtonState(index, true);
-                    return true;
-                }
-            }
-            return false;
-        },
+    if (input.getNavTarget(vk, g.current_bank, getBankCount())) |target| {
+        applyBankChange(hwnd, target);
     }
-    return true;
 }
 
-// handle WM_KEYUP - returns true if handled
+fn handleKeyDown(hwnd: win32.HWND, vk: u32) bool {
+    if (input.isNavKey(vk)) {
+        if (g.held_nav_key != null) return true;
+
+        g.held_nav_key = vk;
+        g.nav_repeat_started = false;
+        applyNavKey(hwnd, vk);
+        _ = win32.SetTimer(hwnd, TIMER_NAV_REPEAT, NAV_INITIAL_DELAY_MS, null);
+        return true;
+    }
+
+    if (g.held_key == null) {
+        if (input.keyToSoundIndex(vk)) |index| {
+            g.held_key = vk;
+            ui.setButtonState(&g.buttons, index, true);
+            return true;
+        }
+    }
+    return false;
+}
+
 fn handleKeyUp(hwnd: win32.HWND, vk: u32) bool {
-    // nav key release - stop repeat timer and trigger auto-preview
-    if (g_held_nav_key == vk) {
-        g_held_nav_key = null;
-        g_nav_repeat_started = false;
+    if (g.held_nav_key == vk) {
+        g.held_nav_key = null;
+        g.nav_repeat_started = false;
         _ = win32.KillTimer(hwnd, TIMER_NAV_REPEAT);
 
-        // schedule auto-preview (short delay to let any pending bank update complete)
-        if (isAutoPreviewEnabled()) {
+        if (ui.isAutoPreviewEnabled(g.auto_preview_checkbox)) {
             _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
         }
         return true;
     }
 
-    // sound key release - play sound
-    if (g_held_key == vk) {
-        if (keyToSoundIndex(vk)) |index| {
-            setButtonState(index, false);
+    if (g.held_key == vk) {
+        if (input.keyToSoundIndex(vk)) |index| {
+            ui.setButtonState(&g.buttons, index, false);
             playSound(index);
         }
-        g_held_key = null;
+        g.held_key = null;
         return true;
     }
     return false;
+}
+
+// }}}
+
+// layout {{{
+
+fn layoutControls(hwnd: win32.HWND) void {
+    if (g.ui_state == .browse_needed) {
+        browse.layoutBrowseUI(hwnd, g.browse_label, g.browse_button);
+        return;
+    }
+
+    ui.layoutButtons(hwnd, g.buttons[0..g.num_buttons], g.current_bank, &g.scroll_pos, &g.content_height, &g.grid_cache, getWavName);
+}
+
+// }}}
+
+// playback {{{
+
+fn playSound(index: u16) void {
+    if (index < getWavCount(g.current_bank)) {
+        playWav(g.current_bank, index);
+        _ = win32.SetFocus(g.main_hwnd);
+    }
+}
+
+fn playRandomSound() void {
+    const wav_count = getWavCount(g.current_bank);
+    if (wav_count == 0) return;
+
+    const random_index: u16 = @intCast(g.prng.random().uintLessThan(usize, wav_count));
+
+    if (g.flash_button) |btn_index| {
+        ui.setButtonState(&g.buttons, btn_index, false);
+    }
+
+    ui.setButtonState(&g.buttons, random_index, true);
+    _ = win32.SetTimer(g.main_hwnd, TIMER_BUTTON_RELEASE, FLASH_DURATION_MS, null);
+    g.flash_button = random_index;
+
+    playSound(random_index);
+}
+
+fn handleBankChange(hwnd: win32.HWND) void {
+    if (g.combobox) |combo| {
+        const sel = win32.SendMessageA(combo, win32.CB_GETCURSEL, 0, 0);
+        if (sel >= 0 and @as(usize, @intCast(sel)) < getBankCount()) {
+            _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 0, 0);
+
+            g.current_bank = @intCast(sel);
+            g.scroll_pos = 0;
+
+            // clear flash state before destroying buttons
+            if (g.flash_button) |btn_index| {
+                ui.setButtonState(&g.buttons, btn_index, false);
+                _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
+                g.flash_button = null;
+            }
+
+            ui.createButtonsForBank(hwnd, &g.buttons, &g.num_buttons, g.current_bank, getWavCount, getWavName);
+            layoutControls(hwnd);
+
+            _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
+            _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
+        }
+    }
+}
+
+fn handleRandomClick(hwnd: win32.HWND) void {
+    playRandomSound();
+    _ = win32.SetFocus(hwnd);
+}
+
+// }}}
+
+// browse handling {{{
+
+fn handleBrowseClick(hwnd: win32.HWND) void {
+    switch (browse.handleBrowse(hwnd, g.allocator)) {
+        .success => |result| {
+            if (g.runtime_banks) |*old_banks| {
+                old_banks.deinit();
+            }
+            g.runtime_banks = result;
+            transitionToNormalUI(hwnd);
+        },
+        .cancelled => {},
+        .invalid_folder => {
+            _ = win32.MessageBoxA(
+                hwnd,
+                "Could not find DATA\\User\\Speech in the selected folder or parent directories.\n\nPlease select your Worms Armageddon installation directory.",
+                "Invalid folder",
+                win32.MB_OK | win32.MB_ICONINFORMATION,
+            );
+        },
+    }
+}
+
+fn transitionToNormalUI(hwnd: win32.HWND) void {
+    if (g.browse_label) |label| {
+        _ = win32.DestroyWindow(label);
+        g.browse_label = null;
+    }
+    if (g.browse_button) |btn| {
+        _ = win32.DestroyWindow(btn);
+        g.browse_button = null;
+    }
+
+    g.ui_state = .normal;
+    ui.createToolbar(hwnd, getBankCount(), getBankName, &g.icon_ctrl, &g.random_button, &g.combobox, &g.auto_preview_checkbox);
+    ui.createButtonsForBank(hwnd, &g.buttons, &g.num_buttons, 0, getWavCount, getWavName);
+    layoutControls(hwnd);
+    _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 }
 
 // }}}
@@ -364,17 +372,15 @@ fn handleKeyUp(hwnd: win32.HWND, vk: u32) bool {
 fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_CREATE => {
-            g_main_hwnd = hwnd;
-            // create toolbar brush (used for menu bar and checkbox background)
-            g_toolbar_brush = win32.CreateSolidBrush(COLOR_TOOLBAR);
-            createMenuBar(hwnd);
-            if (g_ui_state == .browse_needed) {
-                createBrowseUI(hwnd);
+            g.main_hwnd = hwnd;
+            g.toolbar_brush = win32.CreateSolidBrush(drawing.COLOR_TOOLBAR);
+            ui.createMenuBar(hwnd);
+            if (g.ui_state == .browse_needed) {
+                browse.createBrowseUI(hwnd, &g.browse_label, &g.browse_button);
             } else {
-                createCombobox(hwnd);
-                createButtonsForBank(hwnd, 0);
+                ui.createToolbar(hwnd, getBankCount(), getBankName, &g.icon_ctrl, &g.random_button, &g.combobox, &g.auto_preview_checkbox);
+                ui.createButtonsForBank(hwnd, &g.buttons, &g.num_buttons, 0, getWavCount, getWavName);
             }
-            // hide focus rectangles on buttons
             _ = win32.SendMessageA(hwnd, win32.WM_UPDATEUISTATE, (win32.UISF_HIDEFOCUS << 16) | win32.UIS_SET, 0);
             return 0;
         },
@@ -385,76 +391,73 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         },
         win32.WM_GETMINMAXINFO => {
             const mmi: *win32.MINMAXINFO = @ptrFromInt(@as(usize, @bitCast(lParam)));
-            mmi.ptMinTrackSize.x = MIN_WINDOW_WIDTH;
-            mmi.ptMinTrackSize.y = MIN_WINDOW_HEIGHT;
+            mmi.ptMinTrackSize.x = ui.MIN_WINDOW_WIDTH;
+            mmi.ptMinTrackSize.y = ui.MIN_WINDOW_HEIGHT;
             return 0;
         },
         win32.WM_COMMAND => {
             const notification = @as(u16, @truncate(wParam >> 16));
             const control_id = @as(u16, @truncate(wParam));
-            // menu commands (notification == 0 for menus)
             if (notification == 0) {
-                if (control_id == IDM_EXIT or control_id == IDM_CLOSE) {
+                if (control_id == ui.IDM_EXIT or control_id == ui.IDM_CLOSE) {
                     win32.PostQuitMessage(0);
                     return 0;
-                } else if (control_id == IDM_ABOUT) {
+                } else if (control_id == ui.IDM_ABOUT) {
                     _ = win32.MessageBoxA(hwnd, "wormtalker\n\nsoundboard for worms armageddon\n\nhotkeys:\n  up/down - change bank\n  1-9, 0 - play sound 1-10\n  qwerty - play sound 11+", "about wormtalker", win32.MB_OK | win32.MB_ICONINFORMATION);
                     return 0;
                 }
             }
-            if (control_id == ID_BROWSE and notification == win32.BN_CLICKED) {
+            if (control_id == browse.ID_BROWSE and notification == win32.BN_CLICKED) {
                 handleBrowseClick(hwnd);
                 return 0;
-            } else if (control_id == ID_RANDOM and notification == win32.BN_CLICKED) {
+            } else if (control_id == ui.ID_RANDOM and notification == win32.BN_CLICKED) {
                 handleRandomClick(hwnd);
                 return 0;
-            } else if (control_id == ID_AUTO_PREVIEW and notification == win32.BN_CLICKED) {
-                // save setting to registry
-                scanner.saveAutoPreview(isAutoPreviewEnabled());
-                // return focus to main window so keyboard shortcuts work
+            } else if (control_id == ui.ID_AUTO_PREVIEW and notification == win32.BN_CLICKED) {
+                scanner.saveAutoPreview(ui.isAutoPreviewEnabled(g.auto_preview_checkbox));
                 _ = win32.SetFocus(hwnd);
                 return 0;
-            } else if (control_id == ID_COMBOBOX and notification == win32.CBN_SELCHANGE) {
+            } else if (control_id == ui.ID_COMBOBOX and notification == win32.CBN_SELCHANGE) {
                 handleBankChange(hwnd);
-            } else if (control_id == ID_COMBOBOX and notification == win32.CBN_CLOSEUP) {
-                // check if mouse is over a button - show it pressed, wait for release
+            } else if (control_id == ui.ID_COMBOBOX and notification == win32.CBN_CLOSEUP) {
                 var pt: win32.POINT = undefined;
                 if (win32.GetCursorPos(&pt) != 0) {
                     _ = win32.ScreenToClient(hwnd, &pt);
                     if (win32.ChildWindowFromPoint(hwnd, pt)) |child| {
                         const child_id = win32.GetDlgCtrlID(child);
-                        if (child_id >= 0 and child_id < MAX_BUTTONS) {
+                        if (child_id >= 0 and child_id < ui.MAX_BUTTONS) {
                             const btn_index: u16 = @intCast(child_id);
-                            setButtonState(btn_index, true);
-                            g_pending_button = btn_index;
+                            ui.setButtonState(&g.buttons, btn_index, true);
+                            g.pending_button = btn_index;
                             _ = win32.SetCapture(hwnd);
                         }
                     }
                 }
-                // return focus to main window after dropdown closes
                 _ = win32.SetFocus(hwnd);
-            } else if (notification == win32.BN_CLICKED and control_id < MAX_BUTTONS) {
+            } else if (notification == win32.BN_CLICKED and control_id < ui.MAX_BUTTONS) {
                 playSound(control_id);
             }
             return 0;
         },
         win32.WM_VSCROLL => {
-            handleScroll(hwnd, wParam);
+            if (ui.handleScroll(hwnd, wParam, &g.scroll_pos)) {
+                layoutControls(hwnd);
+            }
             return 0;
         },
         win32.WM_MOUSEWHEEL => {
             const hi_word: u16 = @truncate(@as(u64, @bitCast(wParam)) >> 16);
             const delta: i16 = @bitCast(hi_word);
             const scroll_amount: i32 = if (delta > 0) -30 else 30;
-            scrollContent(hwnd, scroll_amount);
+            if (ui.scrollContent(hwnd, scroll_amount, &g.scroll_pos)) {
+                layoutControls(hwnd);
+            }
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            // handle pending button from dropdown close
-            if (g_pending_button) |btn_index| {
+            if (g.pending_button) |btn_index| {
                 _ = win32.ReleaseCapture();
-                setButtonState(btn_index, false);
-                // check if mouse is still over the same button
+                ui.setButtonState(&g.buttons, btn_index, false);
                 var pt: win32.POINT = undefined;
                 if (win32.GetCursorPos(&pt) != 0) {
                     _ = win32.ScreenToClient(hwnd, &pt);
@@ -465,26 +468,23 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
                         }
                     }
                 }
-                g_pending_button = null;
+                g.pending_button = null;
                 return 0;
             }
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_KILLFOCUS => {
             releaseHeldKey();
-            // stop nav repeat
-            if (g_held_nav_key != null) {
-                g_held_nav_key = null;
-                g_nav_repeat_started = false;
+            if (g.held_nav_key != null) {
+                g.held_nav_key = null;
+                g.nav_repeat_started = false;
                 _ = win32.KillTimer(hwnd, TIMER_NAV_REPEAT);
             }
-            // cancel pending auto-preview
             _ = win32.KillTimer(hwnd, TIMER_AUTO_PREVIEW);
-            // also release pending button from dropdown
-            if (g_pending_button) |btn_index| {
+            if (g.pending_button) |btn_index| {
                 _ = win32.ReleaseCapture();
-                setButtonState(btn_index, false);
-                g_pending_button = null;
+                ui.setButtonState(&g.buttons, btn_index, false);
+                g.pending_button = null;
             }
             return 0;
         },
@@ -501,30 +501,26 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         win32.WM_TIMER => {
             if (wParam == TIMER_BUTTON_RELEASE) {
                 _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
-                if (g_flash_button) |btn_index| {
-                    setButtonState(btn_index, false);
-                    g_flash_button = null;
+                if (g.flash_button) |btn_index| {
+                    ui.setButtonState(&g.buttons, btn_index, false);
+                    g.flash_button = null;
                 }
             } else if (wParam == TIMER_NAV_REPEAT) {
-                // repeat nav key while held
-                if (g_held_nav_key) |vk| {
+                if (g.held_nav_key) |vk| {
                     applyNavKey(hwnd, vk);
-                    // after initial delay, switch to fast repeat
-                    if (!g_nav_repeat_started) {
-                        g_nav_repeat_started = true;
+                    if (!g.nav_repeat_started) {
+                        g.nav_repeat_started = true;
                         _ = win32.SetTimer(hwnd, TIMER_NAV_REPEAT, NAV_REPEAT_MS, null);
                     }
                 } else {
                     _ = win32.KillTimer(hwnd, TIMER_NAV_REPEAT);
                 }
             } else if (wParam == TIMER_AUTO_PREVIEW) {
-                // debounced auto-preview: play sound now that user stopped navigating
                 _ = win32.KillTimer(hwnd, TIMER_AUTO_PREVIEW);
-                if (isAutoPreviewEnabled()) {
+                if (ui.isAutoPreviewEnabled(g.auto_preview_checkbox)) {
                     playRandomSound();
                 }
             } else if (wParam == TIMER_BANK_UPDATE) {
-                // debounced bank update: now do the heavy UI work
                 _ = win32.KillTimer(hwnd, TIMER_BANK_UPDATE);
                 performBankUpdate(hwnd);
             }
@@ -534,7 +530,7 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             const hdc: win32.HDC = @ptrFromInt(@as(usize, @truncate(wParam)));
             var rect: win32.RECT = undefined;
             _ = win32.GetClientRect(hwnd, &rect);
-            if (g_toolbar_brush) |brush| {
+            if (g.toolbar_brush) |brush| {
                 _ = win32.FillRect(hdc, &rect, brush);
             }
             return 1;
@@ -542,8 +538,7 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         win32.WM_MEASUREITEM => {
             const mis: *win32.MEASUREITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
             if (mis.CtlType == win32.ODT_MENU) {
-                // measure title menu item
-                mis.itemWidth = 160; // approximate width for "wormtalker v1.2 by shmup"
+                mis.itemWidth = 160;
                 mis.itemHeight = @intCast(win32.GetSystemMetrics(win32.SM_CYMENU));
                 return 1;
             }
@@ -552,32 +547,29 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         win32.WM_DRAWITEM => {
             const dis: *win32.DRAWITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
             if (dis.CtlType == win32.ODT_MENU) {
-                // draw title menu item - just text, no highlight
                 _ = win32.SetBkMode(dis.hDC, win32.TRANSPARENT);
-                _ = win32.SetTextColor(dis.hDC, COLOR_TEXT);
+                _ = win32.SetTextColor(dis.hDC, drawing.COLOR_TEXT);
                 const title = "wormtalker v1.2 by shmup";
                 var text_rect = dis.rcItem;
-                text_rect.left += 6; // padding
+                text_rect.left += 6;
                 _ = win32.DrawTextA(dis.hDC, title, @intCast(title.len), &text_rect, win32.DT_VCENTER | win32.DT_SINGLELINE);
                 return 1;
             }
-            drawButton(dis);
+            drawing.drawButton(dis);
             return 1;
         },
         win32.WM_CTLCOLORSTATIC => {
-            // handle checkbox background color
             const control: win32.HWND = @ptrFromInt(@as(usize, @bitCast(lParam)));
-            if (g_auto_preview_checkbox != null and control == g_auto_preview_checkbox.?) {
+            if (g.auto_preview_checkbox != null and control == g.auto_preview_checkbox.?) {
                 const hdc: win32.HDC = @ptrFromInt(@as(usize, @truncate(wParam)));
                 _ = win32.SetBkMode(hdc, win32.TRANSPARENT);
-                if (g_toolbar_brush) |brush| {
+                if (g.toolbar_brush) |brush| {
                     return @bitCast(@intFromPtr(brush));
                 }
             }
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_NCHITTEST => {
-            // make menu bar draggable (left portion only, not Help/X)
             var mbi = win32.MENUBARINFO{};
             if (win32.GetMenuBarInfo(hwnd, win32.OBJID_MENU, 0, &mbi) != 0) {
                 var pt: win32.POINT = undefined;
@@ -593,9 +585,9 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_DESTROY => {
-            if (g_toolbar_brush) |brush| {
+            if (g.toolbar_brush) |brush| {
                 _ = win32.DeleteObject(@ptrCast(brush));
-                g_toolbar_brush = null;
+                g.toolbar_brush = null;
             }
             win32.PostQuitMessage(0);
             return 0;
@@ -606,588 +598,51 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
 
 // }}}
 
-// ui creation {{{
-
-fn createMenuBar(hwnd: win32.HWND) void {
-    const menu_bar = win32.CreateMenu();
-    const help_menu = win32.CreatePopupMenu();
-
-    if (help_menu) |help| {
-        _ = win32.AppendMenuA(help, win32.MF_STRING, IDM_ABOUT, "&About");
-        _ = win32.AppendMenuA(help, win32.MF_STRING, IDM_EXIT, "E&xit");
-    }
-
-    if (menu_bar) |bar| {
-        // title text on the left (owner-drawn so it's truly non-interactive)
-        _ = win32.AppendMenuA(bar, win32.MF_OWNERDRAW | win32.MF_DISABLED, 0, "wormtalker v1.2 by shmup");
-        // help menu (right-justified, left of X)
-        _ = win32.AppendMenuA(bar, win32.MF_POPUP | win32.MF_RIGHTJUSTIFY, @intFromPtr(help_menu), "&Help");
-        // close button on the right
-        _ = win32.AppendMenuA(bar, win32.MF_STRING, IDM_CLOSE, "X");
-        _ = win32.SetMenu(hwnd, bar);
-    }
-}
-
-fn createCombobox(hwnd: win32.HWND) void {
-    const hinstance = win32.GetModuleHandleA(null);
-
-    // create icon first (leftmost)
-    g_icon_ctrl = win32.CreateWindowExA(
-        0,
-        "STATIC",
-        "",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.SS_ICON,
-        BUTTON_PADDING,
-        TOOLBAR_PADDING,
-        ICON_SIZE,
-        ICON_SIZE,
-        hwnd,
-        null,
-        hinstance,
-        null,
-    );
-
-    // load small icon and set it
-    if (g_icon_ctrl) |ctrl| {
-        const small_icon = win32.LoadImageA(hinstance, win32.IDI_APP, win32.IMAGE_ICON, ICON_SIZE, ICON_SIZE, win32.LR_DEFAULTCOLOR);
-        if (small_icon) |ico| {
-            _ = win32.SendMessageA(ctrl, win32.STM_SETICON, @intFromPtr(ico), 0);
-        }
-    }
-
-    const random_x = BUTTON_PADDING + ICON_SIZE + TOOLBAR_ITEM_SPACING;
-
-    // create random button (after icon) - owner-drawn to avoid focus rectangle
-    g_random_button = win32.CreateWindowExA(
-        0,
-        "BUTTON",
-        "random",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_OWNERDRAW,
-        random_x,
-        TOOLBAR_PADDING,
-        RANDOM_BUTTON_WIDTH,
-        TOOLBAR_CTRL_HEIGHT,
-        hwnd,
-        @ptrFromInt(ID_RANDOM),
-        hinstance,
-        null,
-    );
-
-    const combobox_x = random_x + RANDOM_BUTTON_WIDTH + TOOLBAR_ITEM_SPACING;
-    g_combobox = win32.CreateWindowExA(
-        0,
-        "COMBOBOX",
-        "",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.CBS_DROPDOWNLIST | win32.CBS_HASSTRINGS,
-        combobox_x,
-        TOOLBAR_PADDING,
-        COMBOBOX_WIDTH,
-        COMBOBOX_HEIGHT,
-        hwnd,
-        @ptrFromInt(ID_COMBOBOX),
-        hinstance,
-        null,
-    );
-
-    if (g_combobox) |combo| {
-        const bank_count = getBankCount();
-        for (0..bank_count) |i| {
-            const name = getBankName(i);
-            _ = win32.SendMessageA(combo, win32.CB_ADDSTRING, 0, @bitCast(@intFromPtr(name.ptr)));
-        }
-        _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, 0, 0);
-    }
-
-    // create auto-preview checkbox to the right of combobox
-    g_auto_preview_checkbox = win32.CreateWindowExA(
-        0,
-        "BUTTON",
-        "auto-preview",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_AUTOCHECKBOX,
-        combobox_x + COMBOBOX_WIDTH + TOOLBAR_ITEM_SPACING,
-        TOOLBAR_PADDING + 3, // slight vertical offset to align with combobox text
-        110,
-        20,
-        hwnd,
-        @ptrFromInt(ID_AUTO_PREVIEW),
-        hinstance,
-        null,
-    );
-
-    // load saved setting from registry
-    if (g_auto_preview_checkbox) |checkbox| {
-        const check_state: usize = if (scanner.getAutoPreview()) win32.BST_CHECKED else win32.BST_UNCHECKED;
-        _ = win32.SendMessageA(checkbox, win32.BM_SETCHECK, check_state, 0);
-    }
-}
-
-fn createButtonsForBank(hwnd: win32.HWND, bank_index: usize) void {
-    const hinstance = win32.GetModuleHandleA(null);
-
-    // clear flash state before destroying buttons (index becomes invalid)
-    if (g_flash_button) |btn_index| {
-        setButtonState(btn_index, false); // unpress before destroying
-        _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
-        g_flash_button = null;
-    }
-
-    // destroy existing buttons
-    for (g_buttons[0..g_num_buttons]) |maybe_btn| {
-        if (maybe_btn) |btn| {
-            _ = win32.DestroyWindow(btn);
-        }
-    }
-    g_buttons = [_]?win32.HWND{null} ** MAX_BUTTONS;
-
-    const wav_count = getWavCount(bank_index);
-    g_num_buttons = @min(wav_count, MAX_BUTTONS);
-
-    for (0..g_num_buttons) |i| {
-        const wav_name = getWavName(bank_index, i);
-        var name_buf: [64:0]u8 = undefined;
-        const name_len = @min(wav_name.len, 63);
-        @memcpy(name_buf[0..name_len], wav_name[0..name_len]);
-        name_buf[name_len] = 0;
-
-        g_buttons[i] = win32.CreateWindowExA(
-            0,
-            "BUTTON",
-            &name_buf,
-            win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_OWNERDRAW,
-            0,
-            0,
-            100,
-            BUTTON_HEIGHT,
-            hwnd,
-            @ptrFromInt(i),
-            hinstance,
-            null,
-        );
-    }
-}
-
-fn layoutControls(hwnd: win32.HWND) void {
-    // handle browse UI layout
-    if (g_ui_state == .browse_needed) {
-        layoutBrowseUI(hwnd);
-        return;
-    }
-
-    var rect: win32.RECT = undefined;
-    _ = win32.GetClientRect(hwnd, &rect);
-    const client_width = rect.right - rect.left;
-    const client_height = rect.bottom - rect.top;
-    const button_area_height = client_height - TOOLBAR_HEIGHT;
-    const row_height: i32 = BUTTON_HEIGHT + BUTTON_PADDING;
-
-    // only recalculate grid if width or button count changed
-    if (client_width != g_cached_client_width or g_num_buttons != g_cached_num_buttons) {
-        g_cached_client_width = client_width;
-        g_cached_num_buttons = g_num_buttons;
-
-        // find widest button needed for this bank
-        var max_btn_width: i32 = MIN_BUTTON_WIDTH;
-        for (0..g_num_buttons) |i| {
-            const wav_name = getWavName(g_current_bank, i);
-            const text_width = @as(i32, @intCast(wav_name.len)) * BUTTON_CHAR_WIDTH + 4;
-            max_btn_width = @max(max_btn_width, text_width);
-        }
-
-        // calculate grid dimensions
-        const target_width = @max(max_btn_width, 76);
-        const cell_width = target_width + BUTTON_PADDING;
-
-        // first pass: calculate content height to see if scrollbar needed
-        var available_width = client_width - BUTTON_PADDING * 2;
-        var num_cols: usize = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
-        var num_rows: i32 = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
-        var content_height = num_rows * row_height + BUTTON_PADDING;
-
-        // if scrollbar needed, recalculate with reduced width
-        if (content_height > button_area_height) {
-            const scrollbar_width = win32.GetSystemMetrics(win32.SM_CXVSCROLL);
-            available_width = client_width - scrollbar_width - BUTTON_PADDING * 2;
-            num_cols = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
-            num_rows = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
-            content_height = num_rows * row_height + BUTTON_PADDING;
-        }
-
-        g_cached_num_cols = num_cols;
-        g_cached_btn_width = @divTrunc(available_width - @as(i32, @intCast(num_cols - 1)) * BUTTON_PADDING, @as(i32, @intCast(num_cols)));
-        g_cached_content_height = content_height;
-    }
-
-    // layout buttons using cached grid values
-    for (0..g_num_buttons) |i| {
-        const col: i32 = @intCast(@mod(i, g_cached_num_cols));
-        const row: i32 = @intCast(@divTrunc(i, g_cached_num_cols));
-
-        const x = BUTTON_PADDING + col * (g_cached_btn_width + BUTTON_PADDING);
-        const y = TOOLBAR_HEIGHT + row * row_height - g_scroll_pos;
-
-        if (g_buttons[i]) |btn| {
-            _ = win32.MoveWindow(btn, x, y, g_cached_btn_width, BUTTON_HEIGHT, 1);
-        }
-    }
-
-    g_content_height = g_cached_content_height;
-
-    // clamp scroll position in case content shrunk on resize
-    const max_scroll = @max(0, g_content_height - button_area_height);
-    g_scroll_pos = @min(g_scroll_pos, max_scroll);
-
-    var si = win32.SCROLLINFO{
-        .fMask = win32.SIF_ALL,
-        .nMin = 0,
-        .nMax = g_content_height,
-        .nPage = @intCast(button_area_height),
-        .nPos = g_scroll_pos,
-    };
-    _ = win32.SetScrollInfo(hwnd, win32.SB_VERT, &si, 1);
-}
-
-fn handleScroll(hwnd: win32.HWND, wParam: win32.WPARAM) void {
-    var si = win32.SCROLLINFO{ .fMask = win32.SIF_ALL };
-    _ = win32.GetScrollInfo(hwnd, win32.SB_VERT, &si);
-
-    const action = @as(u32, @truncate(wParam));
-    var new_pos = si.nPos;
-
-    switch (action) {
-        win32.SB_LINEUP => new_pos -= 20,
-        win32.SB_LINEDOWN => new_pos += 20,
-        win32.SB_PAGEUP => new_pos -= @as(i32, @intCast(si.nPage)),
-        win32.SB_PAGEDOWN => new_pos += @as(i32, @intCast(si.nPage)),
-        win32.SB_THUMBTRACK => new_pos = si.nTrackPos,
-        else => {},
-    }
-
-    const max_pos = si.nMax - @as(i32, @intCast(si.nPage));
-    new_pos = @max(0, @min(new_pos, max_pos));
-
-    if (new_pos != g_scroll_pos) {
-        const delta = g_scroll_pos - new_pos;
-        g_scroll_pos = new_pos;
-        _ = win32.ScrollWindow(hwnd, 0, delta, null, null);
-        layoutControls(hwnd);
-    }
-}
-
-fn scrollContent(hwnd: win32.HWND, delta: i32) void {
-    var si = win32.SCROLLINFO{ .fMask = win32.SIF_ALL };
-    _ = win32.GetScrollInfo(hwnd, win32.SB_VERT, &si);
-
-    var new_pos = g_scroll_pos + delta;
-    const max_pos = si.nMax - @as(i32, @intCast(si.nPage));
-    new_pos = @max(0, @min(new_pos, max_pos));
-
-    if (new_pos != g_scroll_pos) {
-        const scroll_delta = g_scroll_pos - new_pos;
-        g_scroll_pos = new_pos;
-        _ = win32.ScrollWindow(hwnd, 0, scroll_delta, null, null);
-        layoutControls(hwnd);
-    }
-}
-
-// }}}
-
-// drawing {{{
-
-// colors (BGR format)
-const COLOR_NORMAL: u32 = 0x00F0F0F0; // light gray (default button)
-const COLOR_PRESSED: u32 = 0x00CFCFFF; // pale pink (RGB: 0xFFCFCF)
-const COLOR_TEXT: u32 = 0x00000000; // black
-// ABGR (Alpha, Blue, Green, Red) - bytes reversed from RGB
-// #RRGGBB → 0x00BBGGRR
-// #FFFCA5 → 0x00A5FCFF
-const COLOR_TOOLBAR: u32 = COLOR_NORMAL;
-
-fn drawButton(dis: *win32.DRAWITEMSTRUCT) void {
-    const is_pressed = (dis.itemState & win32.ODS_SELECTED) != 0;
-
-    // pick background color
-    const bg_color = if (is_pressed) COLOR_PRESSED else COLOR_NORMAL;
-    const brush = win32.CreateSolidBrush(bg_color);
-    defer _ = win32.DeleteObject(@ptrCast(brush));
-
-    // fill background
-    if (brush) |b| {
-        _ = win32.FillRect(dis.hDC, &dis.rcItem, b);
-    }
-
-    // draw 3d edge
-    var edge_rect = dis.rcItem;
-    const edge = if (is_pressed) win32.EDGE_SUNKEN else win32.EDGE_RAISED;
-    _ = win32.DrawEdge(dis.hDC, &edge_rect, edge, win32.BF_RECT);
-
-    // get button text
-    var text_buf: [64:0]u8 = undefined;
-    const hwnd_item: win32.HWND = @ptrCast(dis.hwndItem);
-    const text_len = win32.GetWindowTextA(hwnd_item, &text_buf, 64);
-    if (text_len > 0) {
-        text_buf[@intCast(text_len)] = 0;
-
-        // setup text drawing
-        _ = win32.SetBkColor(dis.hDC, bg_color);
-        _ = win32.SetTextColor(dis.hDC, COLOR_TEXT);
-
-        // offset text when pressed
-        var text_rect = dis.rcItem;
-        if (is_pressed) {
-            text_rect.left += 1;
-            text_rect.top += 1;
-        }
-
-        _ = win32.DrawTextA(dis.hDC, &text_buf, text_len, &text_rect, win32.DT_CENTER | win32.DT_VCENTER | win32.DT_SINGLELINE);
-    }
-}
-
-fn playSound(index: u16) void {
-    if (index < getWavCount(g_current_bank)) {
-        playWav(g_current_bank, index);
-        // return focus to main window so keyboard shortcuts work
-        _ = win32.SetFocus(g_main_hwnd);
-    }
-}
-
-fn playRandomSound() void {
-    const wav_count = getWavCount(g_current_bank);
-    if (wav_count == 0) return;
-
-    const random_index: u16 = @intCast(g_prng.random().uintLessThan(usize, wav_count));
-
-    // unpress any existing flash button before setting new one
-    if (g_flash_button) |btn_index| {
-        setButtonState(btn_index, false);
-    }
-
-    // show button pressed briefly
-    setButtonState(random_index, true);
-    _ = win32.SetTimer(g_main_hwnd, TIMER_BUTTON_RELEASE, FLASH_DURATION_MS, null);
-    g_flash_button = random_index;
-
-    playSound(random_index);
-}
-
-fn handleBankChange(hwnd: win32.HWND) void {
-    handleBankChangeInternal(hwnd, false);
-}
-
-fn handleBankChangeWithSound(hwnd: win32.HWND) void {
-    handleBankChangeInternal(hwnd, true);
-}
-
-fn handleBankChangeInternal(hwnd: win32.HWND, play_random: bool) void {
-    if (g_combobox) |combo| {
-        const sel = win32.SendMessageA(combo, win32.CB_GETCURSEL, 0, 0);
-        if (sel >= 0 and @as(usize, @intCast(sel)) < getBankCount()) {
-            // freeze painting
-            _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 0, 0);
-
-            g_current_bank = @intCast(sel);
-            g_scroll_pos = 0;
-            createButtonsForBank(hwnd, g_current_bank);
-            layoutControls(hwnd);
-
-            // resume painting and force redraw
-            _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
-            _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
-
-            // play random sound from new bank (if auto-preview enabled)
-            if (play_random and isAutoPreviewEnabled()) {
-                playRandomSound();
-            }
-        }
-    }
-}
-
-fn handleRandomClick(hwnd: win32.HWND) void {
-    playRandomSound();
-    // restore focus so hotkeys work
-    _ = win32.SetFocus(hwnd);
-}
-
-// }}}
-
-// browse ui {{{
-
-fn createBrowseUI(hwnd: win32.HWND) void {
-    const hinstance = win32.GetModuleHandleA(null);
-
-    // create label
-    g_browse_label = win32.CreateWindowExA(
-        0,
-        "STATIC",
-        "please browse to your worms armagedon installation folder",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.SS_CENTER,
-        0,
-        0,
-        300,
-        20,
-        hwnd,
-        null,
-        hinstance,
-        null,
-    );
-
-    // create browse button
-    g_browse_button = win32.CreateWindowExA(
-        0,
-        "BUTTON",
-        "browse...",
-        win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_PUSHBUTTON,
-        0,
-        0,
-        100,
-        30,
-        hwnd,
-        @ptrFromInt(ID_BROWSE),
-        hinstance,
-        null,
-    );
-}
-
-fn layoutBrowseUI(hwnd: win32.HWND) void {
-    var rect: win32.RECT = undefined;
-    _ = win32.GetClientRect(hwnd, &rect);
-    const client_width = rect.right - rect.left;
-    const client_height = rect.bottom - rect.top;
-
-    const label_width: i32 = 400;
-    const label_height: i32 = 30;
-    const button_width: i32 = 100;
-    const button_height: i32 = 30;
-    const spacing: i32 = 10;
-
-    const total_height = label_height + spacing + button_height;
-    const start_y = @divTrunc(client_height - total_height, 2);
-
-    if (g_browse_label) |label| {
-        const label_x = @divTrunc(client_width - label_width, 2);
-        _ = win32.MoveWindow(label, label_x, start_y, label_width, label_height, 1);
-    }
-
-    if (g_browse_button) |btn| {
-        const btn_x = @divTrunc(client_width - button_width, 2);
-        const btn_y = start_y + label_height + spacing;
-        _ = win32.MoveWindow(btn, btn_x, btn_y, button_width, button_height, 1);
-    }
-
-    // hide scrollbar in browse mode
-    var si = win32.SCROLLINFO{
-        .fMask = win32.SIF_ALL,
-        .nMin = 0,
-        .nMax = 0,
-        .nPage = 1,
-        .nPos = 0,
-    };
-    _ = win32.SetScrollInfo(hwnd, win32.SB_VERT, &si, 1);
-}
-
-fn handleBrowseClick(hwnd: win32.HWND) void {
-    var path_buf: [win32.MAX_PATH]u8 = undefined;
-    if (scanner.browseForFolder(hwnd, &path_buf)) |path| {
-        // try to find worms root (travel up if needed)
-        var root_buf: [win32.MAX_PATH]u8 = undefined;
-        const worms_root = scanner.findWormsRoot(path, &root_buf) orelse path;
-
-        // try to scan the selected/found directory
-        if (scanner.scanSpeechDirectory(g_allocator, worms_root)) |result| {
-            // free old banks before setting new ones (avoid memory leak on re-browse)
-            if (g_runtime_banks) |*old_banks| {
-                old_banks.deinit();
-            }
-            g_runtime_banks = result;
-            // save for next time
-            scanner.saveBrowsedPath(worms_root);
-            transitionToNormalUI(hwnd);
-        } else |_| {
-            _ = win32.MessageBoxA(
-                hwnd,
-                "Could not find DATA\\User\\Speech in the selected folder or parent directories.\n\nPlease select your Worms Armageddon installation directory.",
-                "Invalid folder",
-                win32.MB_OK | win32.MB_ICONINFORMATION,
-            );
-        }
-    }
-}
-
-fn transitionToNormalUI(hwnd: win32.HWND) void {
-    // destroy browse UI
-    if (g_browse_label) |label| {
-        _ = win32.DestroyWindow(label);
-        g_browse_label = null;
-    }
-    if (g_browse_button) |btn| {
-        _ = win32.DestroyWindow(btn);
-        g_browse_button = null;
-    }
-
-    // switch to normal UI
-    g_ui_state = .normal;
-    createCombobox(hwnd);
-    createButtonsForBank(hwnd, 0);
-    layoutControls(hwnd);
-    _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
-}
-
-// }}}
-
 // main {{{
 
 fn parseArgs() bool {
     const cmd_line = win32.GetCommandLineA();
     if (cmd_line == null) return false;
 
-    // find -b or --browse in command line
     const cmd = std.mem.span(cmd_line.?);
     return std.mem.indexOf(u8, cmd, " -b") != null or
         std.mem.indexOf(u8, cmd, " --browse") != null;
 }
 
-// runtime initialization (called before window creation)
 fn initRuntime(force_browse: bool) void {
     if (!sound_banks.runtime_mode) return;
 
-    // skip registry lookup if browse forced
     if (force_browse) {
-        g_ui_state = .browse_needed;
+        g.ui_state = .browse_needed;
         return;
     }
 
     var path_buf: [win32.MAX_PATH]u8 = undefined;
 
-    // try saved path first (from previous browse)
     if (scanner.getSavedPath(&path_buf)) |path| {
-        if (scanner.scanSpeechDirectory(g_allocator, path)) |result| {
-            g_runtime_banks = result;
-            g_ui_state = .normal;
+        if (scanner.scanSpeechDirectory(g.allocator, path)) |result| {
+            g.runtime_banks = result;
+            g.ui_state = .normal;
             return;
         } else |_| {}
     }
 
-    // fall back to worms registry key
     if (scanner.getWormsPath(&path_buf)) |path| {
-        if (scanner.scanSpeechDirectory(g_allocator, path)) |result| {
-            g_runtime_banks = result;
-            g_ui_state = .normal;
+        if (scanner.scanSpeechDirectory(g.allocator, path)) |result| {
+            g.runtime_banks = result;
+            g.ui_state = .normal;
             return;
         } else |_| {}
     }
 
-    // no path found or scan failed - show browse UI
-    g_ui_state = .browse_needed;
+    g.ui_state = .browse_needed;
 }
 
 pub fn main() void {
-    // seed prng with timestamp
     const seed: u64 = @bitCast(std.time.milliTimestamp());
-    g_prng = std.Random.DefaultPrng.init(seed);
+    g.prng = std.Random.DefaultPrng.init(seed);
 
-    // parse command line args
     const force_browse = parseArgs();
-
-    // initialize runtime mode (check registry, scan speech directory)
     initRuntime(force_browse);
 
     const hinstance = win32.GetModuleHandleA(null);
@@ -1207,15 +662,14 @@ pub fn main() void {
         return;
     }
 
-    // popup window with resize border but no title bar (our menu bar serves as the title)
     const window_style = win32.WS_POPUP | win32.WS_THICKFRAME | win32.WS_MINIMIZEBOX | win32.WS_MAXIMIZEBOX | win32.WS_VISIBLE | win32.WS_VSCROLL | win32.WS_CLIPCHILDREN;
     const hwnd = win32.CreateWindowExA(
-        win32.WS_EX_APPWINDOW, // show in taskbar
+        win32.WS_EX_APPWINDOW,
         "WormboardClass",
         "wormtalker",
         window_style,
-        100, // x position (CW_USEDEFAULT doesn't work well with popup windows)
-        100, // y position
+        100,
+        100,
         600,
         400,
         null,
