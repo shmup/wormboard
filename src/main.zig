@@ -7,9 +7,9 @@ const scanner = @import("scanner.zig");
 
 // layout constants
 const BUTTON_HEIGHT: i32 = 25;
-const BUTTON_PADDING: i32 = 4;
+const BUTTON_PADDING: i32 = 2;
 const BUTTON_CHAR_WIDTH: i32 = 8;
-const MIN_BUTTON_WIDTH: i32 = 60;
+const MIN_BUTTON_WIDTH: i32 = 40;
 const MIN_WINDOW_WIDTH: i32 = 640;
 const MIN_WINDOW_HEIGHT: i32 = 360;
 const TOOLBAR_HEIGHT: i32 = 30;
@@ -652,30 +652,39 @@ fn layoutControls(hwnd: win32.HWND) void {
     const client_width = rect.right - rect.left;
     const client_height = rect.bottom - rect.top;
     const button_area_height = client_height - TOOLBAR_HEIGHT;
+    const available_width = client_width - BUTTON_PADDING * 2;
 
-    // layout buttons in rows
-    var x: i32 = BUTTON_PADDING;
-    var y: i32 = TOOLBAR_HEIGHT + BUTTON_PADDING - g_scroll_pos;
-    const row_height: i32 = BUTTON_HEIGHT + BUTTON_PADDING;
-
+    // find widest button needed for this bank
+    var max_btn_width: i32 = MIN_BUTTON_WIDTH;
     for (0..g_num_buttons) |i| {
         const wav_name = getWavName(g_current_bank, i);
-        const text_width = @as(i32, @intCast(wav_name.len)) * BUTTON_CHAR_WIDTH + 16;
-        const btn_width = @max(text_width, MIN_BUTTON_WIDTH);
+        const text_width = @as(i32, @intCast(wav_name.len)) * BUTTON_CHAR_WIDTH + 4;
+        max_btn_width = @max(max_btn_width, text_width);
+    }
 
-        if (x + btn_width + BUTTON_PADDING > client_width and x > BUTTON_PADDING) {
-            x = BUTTON_PADDING;
-            y += row_height;
-        }
+    // calculate grid dimensions - use generous width so buttons fill space
+    const target_width = @max(max_btn_width, 80);
+    const cell_width = target_width + BUTTON_PADDING;
+    const num_cols: usize = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
+    const btn_width = @divTrunc(available_width - @as(i32, @intCast(num_cols - 1)) * BUTTON_PADDING, @as(i32, @intCast(num_cols)));
+    const row_height: i32 = BUTTON_HEIGHT + BUTTON_PADDING;
+
+    // layout buttons in grid
+    for (0..g_num_buttons) |i| {
+        const col: i32 = @intCast(@mod(i, num_cols));
+        const row: i32 = @intCast(@divTrunc(i, num_cols));
+
+        const x = BUTTON_PADDING + col * (btn_width + BUTTON_PADDING);
+        const y = TOOLBAR_HEIGHT + BUTTON_PADDING + row * row_height - g_scroll_pos;
 
         if (g_buttons[i]) |btn| {
             _ = win32.MoveWindow(btn, x, y, btn_width, BUTTON_HEIGHT, 1);
         }
-
-        x += btn_width + BUTTON_PADDING;
     }
 
-    g_content_height = (y - TOOLBAR_HEIGHT) + row_height + g_scroll_pos;
+    // calculate content height
+    const num_rows: i32 = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
+    g_content_height = num_rows * row_height + BUTTON_PADDING;
 
     var si = win32.SCROLLINFO{
         .fMask = win32.SIF_ALL,
