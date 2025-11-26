@@ -94,6 +94,10 @@ pub const MINMAXINFO = extern struct {
 
 // window styles
 pub const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
+pub const WS_POPUP: u32 = 0x80000000;
+pub const WS_THICKFRAME: u32 = 0x00040000;
+pub const WS_MINIMIZEBOX: u32 = 0x00020000;
+pub const WS_MAXIMIZEBOX: u32 = 0x00010000;
 pub const WS_VISIBLE: u32 = 0x10000000;
 pub const WS_CHILD: u32 = 0x40000000;
 pub const WS_VSCROLL: u32 = 0x00200000;
@@ -154,6 +158,9 @@ pub const BST_CHECKED: u32 = 0x0001;
 // menu flags
 pub const MF_STRING: u32 = 0x00000000;
 pub const MF_POPUP: u32 = 0x00000010;
+pub const MF_DISABLED: u32 = 0x00000002;
+pub const MF_GRAYED: u32 = 0x00000001;
+pub const MF_RIGHTJUSTIFY: u32 = 0x00004000;
 
 // static control color
 pub const WM_CTLCOLORSTATIC: u32 = 0x0138;
@@ -234,6 +241,9 @@ pub const BF_ADJUST: u32 = 0x2000;
 
 // cursor
 pub const IDC_ARROW: usize = 32512;
+
+// extended window styles
+pub const WS_EX_APPWINDOW: u32 = 0x00040000;
 
 // win32 functions
 pub extern "user32" fn RegisterClassExA(*const WNDCLASSEXA) callconv(.c) u16;

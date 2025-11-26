@@ -27,6 +27,7 @@ const ID_COMBOBOX: usize = 1000;
 // menu IDs
 const IDM_ABOUT: usize = 2001;
 const IDM_EXIT: usize = 2002;
+const IDM_CLOSE: usize = 2003;
 
 // browse button ID
 const ID_BROWSE: usize = 3001;
@@ -327,7 +328,7 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             const control_id = @as(u16, @truncate(wParam));
             // menu commands (notification == 0 for menus)
             if (notification == 0) {
-                if (control_id == IDM_EXIT) {
+                if (control_id == IDM_EXIT or control_id == IDM_CLOSE) {
                     win32.PostQuitMessage(0);
                     return 0;
                 } else if (control_id == IDM_ABOUT) {
@@ -505,7 +506,12 @@ fn createMenuBar(hwnd: win32.HWND) void {
     }
 
     if (menu_bar) |bar| {
+        // title text on the left (disabled so it doesn't act as a button)
+        _ = win32.AppendMenuA(bar, win32.MF_STRING | win32.MF_DISABLED, 0, "wormtalker v1.2 by shmup");
+        // help menu
         _ = win32.AppendMenuA(bar, win32.MF_POPUP, @intFromPtr(help_menu), "&Help");
+        // close button on the right
+        _ = win32.AppendMenuA(bar, win32.MF_STRING | win32.MF_RIGHTJUSTIFY, IDM_CLOSE, "X");
         _ = win32.SetMenu(hwnd, bar);
     }
 }
@@ -1061,13 +1067,15 @@ pub fn main() void {
         return;
     }
 
+    // popup window with resize border but no title bar (our menu bar serves as the title)
+    const window_style = win32.WS_POPUP | win32.WS_THICKFRAME | win32.WS_MINIMIZEBOX | win32.WS_MAXIMIZEBOX | win32.WS_VISIBLE | win32.WS_VSCROLL | win32.WS_CLIPCHILDREN;
     const hwnd = win32.CreateWindowExA(
-        0,
+        win32.WS_EX_APPWINDOW, // show in taskbar
         "WormboardClass",
         "wormtalker",
-        win32.WS_OVERLAPPEDWINDOW | win32.WS_VISIBLE | win32.WS_VSCROLL | win32.WS_CLIPCHILDREN,
-        win32.CW_USEDEFAULT,
-        win32.CW_USEDEFAULT,
+        window_style,
+        100, // x position (CW_USEDEFAULT doesn't work well with popup windows)
+        100, // y position
         600,
         400,
         null,
