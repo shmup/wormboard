@@ -56,7 +56,7 @@ fn registrySetString(key_path: [*:0]const u8, value_name: [*:0]const u8, data: [
         0,
         win32.REG_SZ,
         data.ptr,
-        @intCast(data.len + 1),
+        @intCast(data.len),
     );
 }
 
