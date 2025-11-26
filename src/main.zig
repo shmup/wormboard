@@ -3,6 +3,8 @@ const win32 = @import("win32.zig");
 const sound_banks = @import("sound_banks.zig");
 const scanner = @import("scanner.zig");
 
+// constants {{{
+
 // layout constants
 const BUTTON_HEIGHT: i32 = 25;
 const BUTTON_PADDING: i32 = 4;
@@ -43,6 +45,10 @@ const UIState = enum {
     normal,
     browse_needed,
 };
+
+// }}}
+
+// sound bank access {{{
 
 // keyboard mapping: 1-9, 0, then QWERTY order
 // virtual key codes: '0'-'9' = 0x30-0x39, 'A'-'Z' = 0x41-0x5A
@@ -155,6 +161,10 @@ fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     }
 }
 
+// }}}
+
+// globals {{{
+
 // globals for window state
 var g_buttons: [MAX_BUTTONS]?win32.HWND = [_]?win32.HWND{null} ** MAX_BUTTONS;
 var g_num_buttons: usize = 0;
@@ -178,6 +188,10 @@ var g_runtime_banks: ?scanner.ScanResult = null;
 var g_browse_button: ?win32.HWND = null;
 var g_browse_label: ?win32.HWND = null;
 var g_allocator: std.mem.Allocator = std.heap.page_allocator;
+
+// }}}
+
+// input handling {{{
 
 // button state helper
 fn setButtonState(index: u16, pressed: bool) void {
@@ -270,6 +284,10 @@ fn handleKeyUp(hwnd: win32.HWND, vk: u32) bool {
     }
     return false;
 }
+
+// }}}
+
+// window proc {{{
 
 fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -438,6 +456,10 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
     }
 }
+
+// }}}
+
+// ui creation {{{
 
 fn createMenuBar(hwnd: win32.HWND) void {
     const menu_bar = win32.CreateMenu();
@@ -649,6 +671,10 @@ fn scrollContent(hwnd: win32.HWND, delta: i32) void {
     }
 }
 
+// }}}
+
+// drawing {{{
+
 // colors (BGR format)
 const COLOR_NORMAL: u32 = 0x00F0F0F0; // light gray (default button)
 const COLOR_PRESSED: u32 = 0x00CFCFFF; // pale pink (RGB: 0xFFCFCF)
@@ -766,7 +792,10 @@ fn handleRandomClick(hwnd: win32.HWND) void {
     _ = win32.SetFocus(hwnd);
 }
 
-// browse UI functions (shown when worms installation not found)
+// }}}
+
+// browse ui {{{
+
 fn createBrowseUI(hwnd: win32.HWND) void {
     const hinstance = win32.GetModuleHandleA(null);
 
@@ -883,7 +912,10 @@ fn transitionToNormalUI(hwnd: win32.HWND) void {
     _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 }
 
-// parse command line arguments
+// }}}
+
+// main {{{
+
 fn parseArgs() bool {
     const cmd_line = win32.GetCommandLineA();
     if (cmd_line == null) return false;
@@ -981,3 +1013,7 @@ pub fn main() void {
         _ = win32.DispatchMessageA(&msg);
     }
 }
+
+// }}}
+
+// vim: set foldmethod=marker:
