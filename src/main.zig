@@ -13,6 +13,7 @@ const MIN_BUTTON_WIDTH: i32 = 40;
 const MIN_WINDOW_WIDTH: i32 = 600;
 const MIN_WINDOW_HEIGHT: i32 = 460;
 const TOOLBAR_PADDING: i32 = 8; // vertical padding above/below toolbar controls
+const TOOLBAR_ITEM_SPACING: i32 = 4; // horizontal spacing between toolbar controls
 const TOOLBAR_CTRL_HEIGHT: i32 = 23; // match combobox edit height
 const TOOLBAR_HEIGHT: i32 = TOOLBAR_CTRL_HEIGHT + 2 * TOOLBAR_PADDING;
 const COMBOBOX_WIDTH: i32 = 160;
@@ -645,7 +646,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         }
     }
 
-    const random_x = BUTTON_PADDING + ICON_SIZE + BUTTON_PADDING;
+    const random_x = BUTTON_PADDING + ICON_SIZE + TOOLBAR_ITEM_SPACING;
 
     // create random button (after icon) - owner-drawn to avoid focus rectangle
     g_random_button = win32.CreateWindowExA(
@@ -663,7 +664,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         null,
     );
 
-    const combobox_x = random_x + RANDOM_BUTTON_WIDTH + BUTTON_PADDING;
+    const combobox_x = random_x + RANDOM_BUTTON_WIDTH + TOOLBAR_ITEM_SPACING;
     g_combobox = win32.CreateWindowExA(
         0,
         "COMBOBOX",
@@ -694,9 +695,9 @@ fn createCombobox(hwnd: win32.HWND) void {
         "BUTTON",
         "auto-preview",
         win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_AUTOCHECKBOX,
-        combobox_x + COMBOBOX_WIDTH + BUTTON_PADDING,
+        combobox_x + COMBOBOX_WIDTH + TOOLBAR_ITEM_SPACING,
         TOOLBAR_PADDING + 3, // slight vertical offset to align with combobox text
-        100,
+        110,
         20,
         hwnd,
         @ptrFromInt(ID_AUTO_PREVIEW),
@@ -990,20 +991,7 @@ fn handleBankChangeInternal(hwnd: win32.HWND, play_random: bool) void {
 }
 
 fn handleRandomClick(hwnd: win32.HWND) void {
-    const num_banks = getBankCount();
-    if (num_banks == 0) return;
-
-    // pick a random bank
-    const random_bank: usize = g_prng.random().uintLessThan(usize, num_banks);
-
-    // update combobox selection
-    if (g_combobox) |combo| {
-        _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, @intCast(random_bank), 0);
-    }
-
-    // apply the bank change (with auto-preview sound)
-    applyBankChange(hwnd, random_bank);
-
+    playRandomSound();
     // restore focus so hotkeys work
     _ = win32.SetFocus(hwnd);
 }
