@@ -38,10 +38,12 @@ const ID_RANDOM: usize = 3003;
 const TIMER_BUTTON_RELEASE: usize = 4001;
 const TIMER_NAV_REPEAT: usize = 4002;
 const TIMER_AUTO_PREVIEW: usize = 4003;
+const TIMER_BANK_UPDATE: usize = 4004;
 const FLASH_DURATION_MS: u32 = 100;
 const NAV_INITIAL_DELAY_MS: u32 = 300; // delay before repeat starts
 const NAV_REPEAT_MS: u32 = 50; // fast repeat rate after initial delay
 const AUTO_PREVIEW_DELAY_MS: u32 = 150; // debounce delay for auto-preview after nav
+const BANK_UPDATE_DELAY_MS: u32 = 30; // debounce delay for button recreation
 
 // navigation
 const BANKS_PER_PAGE: i32 = 13;
@@ -139,32 +141,61 @@ fn isAutoPreviewEnabled() bool {
     return true; // default to enabled if checkbox doesn't exist
 }
 
-// apply a bank change immediately (called from debounce timer)
+// lightweight bank change - just update state and combobox, debounce heavy UI work
 fn applyBankChange(hwnd: win32.HWND, target: usize) void {
     const num_banks = getBankCount();
     if (num_banks == 0 or target >= num_banks) return;
 
-    // ensure combobox shows correct selection (might have drifted)
+    g_current_bank = target;
+    g_scroll_pos = 0;
+
+    // update combobox immediately (lightweight)
     if (g_combobox) |combo| {
         _ = win32.SendMessageA(combo, win32.CB_SETCURSEL, @intCast(target), 0);
     }
 
+    // hide buttons during rapid navigation (avoids showing wrong bank's buttons)
+    hideAllButtons();
+
+    // debounce heavy UI work (button creation)
+    _ = win32.SetTimer(hwnd, TIMER_BANK_UPDATE, BANK_UPDATE_DELAY_MS, null);
+
+    // debounce auto-preview
+    if (isAutoPreviewEnabled()) {
+        _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
+    }
+}
+
+// hide all buttons quickly (used during rapid navigation)
+fn hideAllButtons() void {
+    // clear flash state
+    if (g_flash_button) |btn_index| {
+        setButtonState(btn_index, false);
+        if (g_main_hwnd) |hwnd| {
+            _ = win32.KillTimer(hwnd, TIMER_BUTTON_RELEASE);
+        }
+        g_flash_button = null;
+    }
+
+    // hide buttons (much faster than destroying)
+    for (g_buttons[0..g_num_buttons]) |maybe_btn| {
+        if (maybe_btn) |btn| {
+            _ = win32.ShowWindow(btn, win32.SW_HIDE);
+        }
+    }
+}
+
+// do the heavy UI update (called from debounce timer)
+fn performBankUpdate(hwnd: win32.HWND) void {
     // freeze painting
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 0, 0);
 
-    g_current_bank = target;
-    g_scroll_pos = 0;
     createButtonsForBank(hwnd, g_current_bank);
     layoutControls(hwnd);
 
     // resume painting and force redraw
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
     _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
-
-    // debounce auto-preview: only play after user stops navigating
-    if (isAutoPreviewEnabled()) {
-        _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
-    }
 }
 
 // }}}
@@ -470,6 +501,10 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
                 if (isAutoPreviewEnabled()) {
                     playRandomSound();
                 }
+            } else if (wParam == TIMER_BANK_UPDATE) {
+                // debounced bank update: now do the heavy UI work
+                _ = win32.KillTimer(hwnd, TIMER_BANK_UPDATE);
+                performBankUpdate(hwnd);
             }
             return 0;
         },

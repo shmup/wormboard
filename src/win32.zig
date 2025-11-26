@@ -289,6 +289,7 @@ pub extern "user32" fn GetScrollInfo(HWND, i32, *SCROLLINFO) callconv(.c) BOOL;
 pub extern "user32" fn ScrollWindow(HWND, i32, i32, ?*const RECT, ?*const RECT) callconv(.c) BOOL;
 pub extern "user32" fn LoadCursorA(?HINSTANCE, usize) callconv(.c) ?HCURSOR;
 pub extern "user32" fn ShowWindow(HWND, i32) callconv(.c) BOOL;
+pub const SW_HIDE: i32 = 0;
 pub extern "user32" fn UpdateWindow(HWND) callconv(.c) BOOL;
 pub extern "user32" fn DestroyWindow(HWND) callconv(.c) BOOL;
 pub extern "user32" fn SendMessageA(HWND, u32, WPARAM, LPARAM) callconv(.c) LRESULT;
