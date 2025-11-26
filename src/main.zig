@@ -17,6 +17,7 @@ const COMBOBOX_WIDTH: i32 = 150;
 const COMBOBOX_HEIGHT: i32 = 250;
 const RANDOM_BUTTON_WIDTH: i32 = 55;
 const TOOLBAR_CTRL_HEIGHT: i32 = 23; // match combobox edit height
+const TOOLBAR_Y_OFFSET: i32 = 5; // top padding for toolbar controls
 const ICON_SIZE: i32 = 22; // fill toolbar height
 const MAX_BUTTONS: usize = 128;
 
@@ -519,7 +520,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         "",
         win32.WS_CHILD | win32.WS_VISIBLE | win32.SS_ICON,
         BUTTON_PADDING,
-        BUTTON_PADDING,
+        TOOLBAR_Y_OFFSET,
         ICON_SIZE,
         ICON_SIZE,
         hwnd,
@@ -545,7 +546,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         "random",
         win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_OWNERDRAW,
         random_x,
-        BUTTON_PADDING,
+        TOOLBAR_Y_OFFSET,
         RANDOM_BUTTON_WIDTH,
         TOOLBAR_CTRL_HEIGHT,
         hwnd,
@@ -561,7 +562,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         "",
         win32.WS_CHILD | win32.WS_VISIBLE | win32.CBS_DROPDOWNLIST | win32.CBS_HASSTRINGS,
         combobox_x,
-        BUTTON_PADDING,
+        TOOLBAR_Y_OFFSET,
         COMBOBOX_WIDTH,
         COMBOBOX_HEIGHT,
         hwnd,
@@ -586,7 +587,7 @@ fn createCombobox(hwnd: win32.HWND) void {
         "auto-preview",
         win32.WS_CHILD | win32.WS_VISIBLE | win32.BS_AUTOCHECKBOX,
         combobox_x + COMBOBOX_WIDTH + BUTTON_PADDING,
-        BUTTON_PADDING + 3, // slight vertical offset to align with combobox text
+        TOOLBAR_Y_OFFSET + 3, // slight vertical offset to align with combobox text
         100,
         20,
         hwnd,
