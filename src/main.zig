@@ -561,13 +561,24 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
         },
         win32.WM_CTLCOLORSTATIC => {
             const control: win32.HWND = @ptrFromInt(@as(usize, @bitCast(lParam)));
+            const hdc: win32.HDC = @ptrFromInt(@as(usize, @truncate(wParam)));
+
+            // auto-preview checkbox uses toolbar brush
             if (g.auto_preview_checkbox != null and control == g.auto_preview_checkbox.?) {
-                const hdc: win32.HDC = @ptrFromInt(@as(usize, @truncate(wParam)));
                 _ = win32.SetBkMode(hdc, win32.TRANSPARENT);
                 if (g.toolbar_brush) |brush| {
                     return @bitCast(@intFromPtr(brush));
                 }
             }
+
+            // browse label uses same brush as toolbar
+            if (g.browse_label != null and control == g.browse_label.?) {
+                _ = win32.SetBkMode(hdc, win32.TRANSPARENT);
+                if (g.toolbar_brush) |brush| {
+                    return @bitCast(@intFromPtr(brush));
+                }
+            }
+
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_NCHITTEST => {

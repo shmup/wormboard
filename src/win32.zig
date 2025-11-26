@@ -241,6 +241,7 @@ pub extern "gdi32" fn SetTextColor(hdc: HDC, color: u32) callconv(.c) u32;
 
 pub const TRANSPARENT: i32 = 1;
 pub extern "gdi32" fn CreateSolidBrush(color: u32) callconv(.c) ?HBRUSH;
+pub extern "user32" fn GetSysColorBrush(nIndex: i32) callconv(.c) ?HBRUSH;
 pub extern "gdi32" fn DeleteObject(ho: ?*anyopaque) callconv(.c) BOOL;
 pub extern "gdi32" fn FillRect(hdc: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) i32;
 pub extern "gdi32" fn SelectObject(hdc: HDC, h: ?*anyopaque) callconv(.c) ?*anyopaque;
