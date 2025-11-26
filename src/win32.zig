@@ -317,6 +317,7 @@ pub extern "user32" fn LoadImageA(?HINSTANCE, usize, u32, i32, i32, u32) callcon
 pub extern "user32" fn GetSystemMetrics(nIndex: i32) callconv(.c) i32;
 
 // system metrics
+pub const SM_CXVSCROLL: i32 = 2;
 pub const SM_CYMENU: i32 = 15;
 
 // icon resource id

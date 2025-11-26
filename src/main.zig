@@ -679,7 +679,6 @@ fn layoutControls(hwnd: win32.HWND) void {
     const client_width = rect.right - rect.left;
     const client_height = rect.bottom - rect.top;
     const button_area_height = client_height - TOOLBAR_HEIGHT;
-    const available_width = client_width - BUTTON_PADDING * 2;
 
     // find widest button needed for this bank
     var max_btn_width: i32 = MIN_BUTTON_WIDTH;
@@ -692,9 +691,24 @@ fn layoutControls(hwnd: win32.HWND) void {
     // calculate grid dimensions - use generous width so buttons fill space
     const target_width = @max(max_btn_width, 76);
     const cell_width = target_width + BUTTON_PADDING;
-    const num_cols: usize = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
-    const btn_width = @divTrunc(available_width - @as(i32, @intCast(num_cols - 1)) * BUTTON_PADDING, @as(i32, @intCast(num_cols)));
     const row_height: i32 = BUTTON_HEIGHT + BUTTON_PADDING;
+
+    // first pass: calculate content height to see if scrollbar needed
+    var available_width = client_width - BUTTON_PADDING * 2;
+    var num_cols: usize = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
+    var num_rows: i32 = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
+    var content_height = num_rows * row_height + BUTTON_PADDING;
+
+    // if scrollbar needed, recalculate with reduced width
+    if (content_height > button_area_height) {
+        const scrollbar_width = win32.GetSystemMetrics(win32.SM_CXVSCROLL);
+        available_width = client_width - scrollbar_width - BUTTON_PADDING * 2;
+        num_cols = @intCast(@max(1, @divTrunc(available_width + BUTTON_PADDING, cell_width)));
+        num_rows = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
+        content_height = num_rows * row_height + BUTTON_PADDING;
+    }
+
+    const btn_width = @divTrunc(available_width - @as(i32, @intCast(num_cols - 1)) * BUTTON_PADDING, @as(i32, @intCast(num_cols)));
 
     // layout buttons in grid
     for (0..g_num_buttons) |i| {
@@ -709,9 +723,7 @@ fn layoutControls(hwnd: win32.HWND) void {
         }
     }
 
-    // calculate content height
-    const num_rows: i32 = @intCast((@as(usize, g_num_buttons) + num_cols - 1) / num_cols);
-    g_content_height = num_rows * row_height + BUTTON_PADDING;
+    g_content_height = content_height;
 
     var si = win32.SCROLLINFO{
         .fMask = win32.SIF_ALL,
