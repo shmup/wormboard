@@ -235,7 +235,8 @@ fn handleKeyUp(hwnd: win32.HWND, vk: u32) bool {
         g.nav_repeat_started = false;
         _ = win32.KillTimer(hwnd, TIMER_NAV_REPEAT);
 
-        if (ui.isAutoPreviewEnabled(g.auto_preview_checkbox)) {
+        // only auto-preview if we actually have multiple banks to navigate
+        if (getBankCount() > 1 and ui.isAutoPreviewEnabled(g.auto_preview_checkbox)) {
             _ = win32.SetTimer(hwnd, TIMER_AUTO_PREVIEW, AUTO_PREVIEW_DELAY_MS, null);
         }
         return true;

@@ -21,7 +21,7 @@ pub const BANKS_PER_PAGE: i32 = 13;
 
 // calculate nav target from key press
 pub fn getNavTarget(vk: u32, current_bank: usize, num_banks: usize) ?usize {
-    if (num_banks == 0) return null;
+    if (num_banks <= 1) return null;
 
     const base: i32 = @intCast(current_bank);
     const num: i32 = @intCast(num_banks);
