@@ -42,6 +42,67 @@ pub const ScanResult = struct {
 
 const WORMTALKER_REG_KEY = "Software\\wormtalker";
 
+// save auto-preview setting to registry
+pub fn saveAutoPreview(enabled: bool) void {
+    var key: win32.HKEY = undefined;
+    const status = win32.RegCreateKeyExA(
+        win32.HKEY_CURRENT_USER,
+        WORMTALKER_REG_KEY,
+        0,
+        null,
+        0,
+        win32.KEY_WRITE,
+        null,
+        &key,
+        null,
+    );
+
+    if (status != win32.ERROR_SUCCESS) return;
+    defer _ = win32.RegCloseKey(key);
+
+    const value: u32 = if (enabled) 1 else 0;
+    _ = win32.RegSetValueExA(
+        key,
+        "AutoPreview",
+        0,
+        win32.REG_DWORD,
+        @ptrCast(&value),
+        @sizeOf(u32),
+    );
+}
+
+// get auto-preview setting from registry (defaults to true if not set)
+pub fn getAutoPreview() bool {
+    var key: win32.HKEY = undefined;
+    const status = win32.RegOpenKeyExA(
+        win32.HKEY_CURRENT_USER,
+        WORMTALKER_REG_KEY,
+        0,
+        win32.KEY_READ,
+        &key,
+    );
+
+    if (status != win32.ERROR_SUCCESS) return true;
+    defer _ = win32.RegCloseKey(key);
+
+    var value: u32 = 1;
+    var data_type: u32 = 0;
+    var data_size: u32 = @sizeOf(u32);
+
+    const query_status = win32.RegQueryValueExA(
+        key,
+        "AutoPreview",
+        null,
+        &data_type,
+        @ptrCast(&value),
+        &data_size,
+    );
+
+    if (query_status != win32.ERROR_SUCCESS or data_type != win32.REG_DWORD) return true;
+
+    return value != 0;
+}
+
 // save browsed path to registry
 pub fn saveBrowsedPath(path: []const u8) void {
     var key: win32.HKEY = undefined;

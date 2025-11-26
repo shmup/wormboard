@@ -145,6 +145,7 @@ pub const BM_SETSTATE: u32 = 0x00F3;
 pub const BM_GETCHECK: u32 = 0x00F0;
 pub const BM_SETCHECK: u32 = 0x00F1;
 pub const BS_AUTOCHECKBOX: u32 = 0x00000003;
+pub const BST_UNCHECKED: u32 = 0x0000;
 pub const BST_CHECKED: u32 = 0x0001;
 
 // menu flags
@@ -293,6 +294,7 @@ pub const KEY_READ: REGSAM = 0x20019;
 pub const KEY_WRITE: REGSAM = 0x20006;
 pub const KEY_ALL_ACCESS: REGSAM = 0xF003F;
 pub const REG_SZ: u32 = 1;
+pub const REG_DWORD: u32 = 4;
 pub const ERROR_SUCCESS: LSTATUS = 0;
 
 // registry functions

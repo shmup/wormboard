@@ -317,6 +317,8 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
                 handleRandomClick(hwnd);
                 return 0;
             } else if (control_id == ID_AUTO_PREVIEW and notification == win32.BN_CLICKED) {
+                // save setting to registry
+                scanner.saveAutoPreview(isAutoPreviewEnabled());
                 // return focus to main window so keyboard shortcuts work
                 _ = win32.SetFocus(hwnd);
                 return 0;
@@ -512,9 +514,10 @@ fn createCombobox(hwnd: win32.HWND) void {
         null,
     );
 
-    // default to checked
+    // load saved setting from registry
     if (g_auto_preview_checkbox) |checkbox| {
-        _ = win32.SendMessageA(checkbox, win32.BM_SETCHECK, win32.BST_CHECKED, 0);
+        const check_state: usize = if (scanner.getAutoPreview()) win32.BST_CHECKED else win32.BST_UNCHECKED;
+        _ = win32.SendMessageA(checkbox, win32.BM_SETCHECK, check_state, 0);
     }
 }
 
