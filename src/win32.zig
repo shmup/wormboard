@@ -152,6 +152,24 @@ pub const BST_CHECKED: u32 = 0x0001;
 pub const MF_STRING: u32 = 0x00000000;
 pub const MF_POPUP: u32 = 0x00000010;
 
+// menu info
+pub const MIM_BACKGROUND: u32 = 0x00000002;
+
+pub const MENUINFO = extern struct {
+    cbSize: u32 = @sizeOf(MENUINFO),
+    fMask: u32 = 0,
+    dwStyle: u32 = 0,
+    cyMax: u32 = 0,
+    hbrBack: ?HBRUSH = null,
+    dwContextHelpID: u32 = 0,
+    dwMenuData: usize = 0,
+};
+
+pub extern "user32" fn SetMenuInfo(HMENU, *const MENUINFO) callconv(.c) BOOL;
+
+// static control color
+pub const WM_CTLCOLORSTATIC: u32 = 0x0138;
+
 // messagebox
 pub const MB_OK: u32 = 0x00000000;
 pub const MB_ICONINFORMATION: u32 = 0x00000040;
@@ -209,7 +227,10 @@ pub const DT_VCENTER: u32 = 0x00000004;
 pub const DT_SINGLELINE: u32 = 0x00000020;
 
 pub extern "gdi32" fn SetBkColor(hdc: HDC, color: u32) callconv(.c) u32;
+pub extern "gdi32" fn SetBkMode(hdc: HDC, mode: i32) callconv(.c) i32;
 pub extern "gdi32" fn SetTextColor(hdc: HDC, color: u32) callconv(.c) u32;
+
+pub const TRANSPARENT: i32 = 1;
 pub extern "gdi32" fn CreateSolidBrush(color: u32) callconv(.c) ?HBRUSH;
 pub extern "gdi32" fn DeleteObject(ho: ?*anyopaque) callconv(.c) BOOL;
 pub extern "gdi32" fn FillRect(hdc: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) i32;

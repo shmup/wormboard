@@ -188,6 +188,7 @@ var g_runtime_banks: ?scanner.ScanResult = null;
 var g_browse_button: ?win32.HWND = null;
 var g_browse_label: ?win32.HWND = null;
 var g_allocator: std.mem.Allocator = std.heap.page_allocator;
+var g_toolbar_brush: ?win32.HBRUSH = null;
 
 // }}}
 
@@ -293,6 +294,8 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
     switch (msg) {
         win32.WM_CREATE => {
             g_main_hwnd = hwnd;
+            // create toolbar brush (used for menu bar and checkbox background)
+            g_toolbar_brush = win32.CreateSolidBrush(COLOR_TOOLBAR);
             createMenuBar(hwnd);
             if (g_ui_state == .browse_needed) {
                 createBrowseUI(hwnd);
@@ -449,7 +452,23 @@ fn wndProc(hwnd: win32.HWND, msg: u32, wParam: win32.WPARAM, lParam: win32.LPARA
             drawButton(dis);
             return 1;
         },
+        win32.WM_CTLCOLORSTATIC => {
+            // handle checkbox background color
+            const control: win32.HWND = @ptrFromInt(@as(usize, @bitCast(lParam)));
+            if (g_auto_preview_checkbox != null and control == g_auto_preview_checkbox.?) {
+                const hdc: win32.HDC = @ptrFromInt(@as(usize, @truncate(wParam)));
+                _ = win32.SetBkMode(hdc, win32.TRANSPARENT);
+                if (g_toolbar_brush) |brush| {
+                    return @bitCast(@intFromPtr(brush));
+                }
+            }
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+        },
         win32.WM_DESTROY => {
+            if (g_toolbar_brush) |brush| {
+                _ = win32.DeleteObject(@ptrCast(brush));
+                g_toolbar_brush = null;
+            }
             win32.PostQuitMessage(0);
             return 0;
         },
@@ -473,6 +492,15 @@ fn createMenuBar(hwnd: win32.HWND) void {
     if (menu_bar) |bar| {
         _ = win32.AppendMenuA(bar, win32.MF_POPUP, @intFromPtr(help_menu), "&Help");
         _ = win32.SetMenu(hwnd, bar);
+
+        // set menu bar background color
+        if (g_toolbar_brush) |brush| {
+            var mi = win32.MENUINFO{
+                .fMask = win32.MIM_BACKGROUND,
+                .hbrBack = brush,
+            };
+            _ = win32.SetMenuInfo(bar, &mi);
+        }
     }
 }
 
