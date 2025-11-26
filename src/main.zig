@@ -40,8 +40,8 @@ const TIMER_NAV_REPEAT: usize = 4002;
 const TIMER_AUTO_PREVIEW: usize = 4003;
 const TIMER_BANK_UPDATE: usize = 4004;
 const FLASH_DURATION_MS: u32 = 100;
-const NAV_INITIAL_DELAY_MS: u32 = 300; // delay before repeat starts
-const NAV_REPEAT_MS: u32 = 50; // fast repeat rate after initial delay
+const NAV_INITIAL_DELAY_MS: u32 = 150; // delay before repeat starts
+const NAV_REPEAT_MS: u32 = 0; // fast repeat rate after initial delay
 const AUTO_PREVIEW_DELAY_MS: u32 = 150; // debounce delay for auto-preview after nav
 const BANK_UPDATE_DELAY_MS: u32 = 30; // debounce delay for button recreation
 
@@ -168,6 +168,9 @@ fn applyBankChange(hwnd: win32.HWND, target: usize) void {
 
 // hide all buttons quickly (used during rapid navigation)
 fn hideAllButtons() void {
+    // skip if already hidden (avoid redundant work during rapid nav)
+    if (g_buttons_hidden) return;
+
     // clear flash state
     if (g_flash_button) |btn_index| {
         setButtonState(btn_index, false);
@@ -184,10 +187,7 @@ fn hideAllButtons() void {
         }
     }
 
-    // keep focus on main window so arrow keys don't interact with toolbar buttons
-    if (g_main_hwnd) |hwnd| {
-        _ = win32.SetFocus(hwnd);
-    }
+    g_buttons_hidden = true;
 }
 
 // do the heavy UI update (called from debounce timer)
@@ -197,6 +197,9 @@ fn performBankUpdate(hwnd: win32.HWND) void {
 
     createButtonsForBank(hwnd, g_current_bank);
     layoutControls(hwnd);
+
+    // buttons are now visible again
+    g_buttons_hidden = false;
 
     // resume painting and force redraw (only button area, not toolbar)
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
@@ -226,6 +229,7 @@ var g_nav_repeat_started: bool = false; // true after initial delay, now repeati
 var g_pending_button: ?u16 = null; // tracks button pressed while dropdown was closing
 var g_prng: std.Random.DefaultPrng = undefined;
 var g_flash_button: ?u16 = null; // button being flashed after bank change
+var g_buttons_hidden: bool = false; // true when buttons are hidden during rapid nav
 
 // runtime mode state
 var g_ui_state: UIState = .normal;
