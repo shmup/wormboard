@@ -183,6 +183,11 @@ fn hideAllButtons() void {
             _ = win32.ShowWindow(btn, win32.SW_HIDE);
         }
     }
+
+    // keep focus on main window so arrow keys don't interact with toolbar buttons
+    if (g_main_hwnd) |hwnd| {
+        _ = win32.SetFocus(hwnd);
+    }
 }
 
 // do the heavy UI update (called from debounce timer)
@@ -193,9 +198,12 @@ fn performBankUpdate(hwnd: win32.HWND) void {
     createButtonsForBank(hwnd, g_current_bank);
     layoutControls(hwnd);
 
-    // resume painting and force redraw
+    // resume painting and force redraw (only button area, not toolbar)
     _ = win32.SendMessageA(hwnd, win32.WM_SETREDRAW, 1, 0);
-    _ = win32.RedrawWindow(hwnd, null, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
+    var rect: win32.RECT = undefined;
+    _ = win32.GetClientRect(hwnd, &rect);
+    rect.top = TOOLBAR_HEIGHT; // exclude toolbar from redraw
+    _ = win32.RedrawWindow(hwnd, &rect, null, win32.RDW_ERASE | win32.RDW_INVALIDATE | win32.RDW_ALLCHILDREN);
 }
 
 // }}}
